@@ -1735,7 +1735,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("An unexpected error occurred. Please try again later.", parse_mode="HTML")
 
 # Main function to run the bot
-async def main():
+def main():
     try:
         init_db()
         application = Application.builder().token(BOT_TOKEN).build()
@@ -1752,12 +1752,12 @@ async def main():
         application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
         application.add_error_handler(error_handler)
 
-        # Start polling
-        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Start polling - synchronous method
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
         logger.error(f"Main function error: {str(e)}")
         print("Failed to start the bot. Please check the logs for details.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
