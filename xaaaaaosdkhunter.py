@@ -1759,30 +1759,15 @@ async def main():
         application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
         application.add_error_handler(error_handler)
 
-        await application.start()
-        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-        
-        # Keep the bot running
-        import signal
-        stop_signals = (signal.SIGINT, signal.SIGTERM)
-        for sig in stop_signals:
-            signal.signal(sig, lambda s, f: asyncio.create_task(shutdown(application)))
-        
-        # Keep running until stopped
-        await asyncio.Event().wait()
-        
-    except Exception as e:
-        logger.error(f"Main function error: {str(e)}")
-        print("Failed to start the bot. Please check the logs for details.")
+def main():
+    application = Application.builder().token(BOT_TOKEN).build()
 
-async def shutdown(application):
-    """Gracefully shutdown the bot"""
-    try:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
-    except Exception as e:
-        logger.error(f"Shutdown error: {str(e)}")
+    # Register your handlers
+    application.add_handler(CommandHandler("start", start))
+    # Add other handlers here...
+
+    # Start bot 24/7
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
