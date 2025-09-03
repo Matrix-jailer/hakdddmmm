@@ -1738,35 +1738,26 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("An unexpected error occurred. Please try again later.", parse_mode="HTML")
 
 # Main function to run the bot
-async def main():
-    try:
-        init_db()
-        application = Application.builder().token(BOT_TOKEN).build()
-        
-        # Initialize the bot
-        await application.initialize()
-        await application.bot.initialize()
-
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(CommandHandler("pp", lambda update, context: asyncio.create_task(pp_check(update, context))))
-        application.add_handler(CommandHandler("mpp", lambda update, context: asyncio.create_task(mpp_check(update, context))))
-        application.add_handler(CommandHandler("addusercredit", add_user_credit))
-        application.add_handler(CommandHandler("deductusercredit", deduct_user_credit))
-        application.add_handler(CommandHandler("broadcast", broadcast))
-        application.add_handler(CommandHandler("ccusers", cc_users))
-        application.add_handler(CallbackQueryHandler(button_callback))
-        # Handle all messages (text, commands, URLs, etc.) when user is checking
-        application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
-        application.add_error_handler(error_handler)
-
 def main():
+    # Initialize database
+    init_db()
+
+    # Build application
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Register your handlers
+    # Register handlers
     application.add_handler(CommandHandler("start", start))
-    # Add other handlers here...
+    application.add_handler(CommandHandler("pp", lambda u, c: asyncio.create_task(pp_check(u, c))))
+    application.add_handler(CommandHandler("mpp", lambda u, c: asyncio.create_task(mpp_check(u, c))))
+    application.add_handler(CommandHandler("addusercredit", add_user_credit))
+    application.add_handler(CommandHandler("deductusercredit", deduct_user_credit))
+    application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CommandHandler("ccusers", cc_users))
+    application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
+    application.add_error_handler(error_handler)
 
-    # Start bot 24/7
+    # Run bot 24/7
     application.run_polling()
 
 if __name__ == "__main__":
