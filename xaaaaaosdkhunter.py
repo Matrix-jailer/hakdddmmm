@@ -7,6 +7,7 @@ import random
 import string
 import time
 import base64
+import os
 from datetime import datetime
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -31,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "8428745102:AAF5LXKMEtMTymU6vJkZTZ5Bxd1neruGfHE"  # Replace with your actual bot token
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with your actual bot token
 ADMIN_ID = 7451622773  # Replace with your admin's Telegram user ID
 REGISTRATION_CHANNEL = "-1002237023678"  # Replace with registration channel ID
 RESULTS_CHANNEL = "-1002158129417"  # Replace with results channel ID
@@ -1738,27 +1739,51 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("An unexpected error occurred. Please try again later.", parse_mode="HTML")
 
 # Main function to run the bot
-def main():
-    # Initialize database
-    init_db()
+async def main():
+    try:
+        init_db()
+        application = Application.builder().token(BOT_TOKEN).build()
+        
+        # Initialize the bot
+        await application.initialize()
+        await application.bot.initialize()
 
-    # Build application
-    application = Application.builder().token(BOT_TOKEN).build()
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("pp", lambda update, context: asyncio.create_task(pp_check(update, context))))
+        application.add_handler(CommandHandler("mpp", lambda update, context: asyncio.create_task(mpp_check(update, context))))
+        application.add_handler(CommandHandler("addusercredit", add_user_credit))
+        application.add_handler(CommandHandler("deductusercredit", deduct_user_credit))
+        application.add_handler(CommandHandler("broadcast", broadcast))
+        application.add_handler(CommandHandler("ccusers", cc_users))
+        application.add_handler(CallbackQueryHandler(button_callback))
+        # Handle all messages (text, commands, URLs, etc.) when user is checking
+        application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
+        application.add_error_handler(error_handler)
 
-    # Register handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("pp", lambda u, c: asyncio.create_task(pp_check(u, c))))
-    application.add_handler(CommandHandler("mpp", lambda u, c: asyncio.create_task(mpp_check(u, c))))
-    application.add_handler(CommandHandler("addusercredit", add_user_credit))
-    application.add_handler(CommandHandler("deductusercredit", deduct_user_credit))
-    application.add_handler(CommandHandler("broadcast", broadcast))
-    application.add_handler(CommandHandler("ccusers", cc_users))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
-    application.add_error_handler(error_handler)
+        await application.start()
+        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        
+        # Keep the bot running
+        import signal
+        stop_signals = (signal.SIGINT, signal.SIGTERM)
+        for sig in stop_signals:
+            signal.signal(sig, lambda s, f: asyncio.create_task(shutdown(application)))
+        
+        # Keep running until stopped
+        await asyncio.Event().wait()
+        
+    except Exception as e:
+        logger.error(f"Main function error: {str(e)}")
+        print("Failed to start the bot. Please check the logs for details.")
 
-    # Run bot 24/7
-    application.run_polling()
+async def shutdown(application):
+    """Gracefully shutdown the bot"""
+    try:
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+    except Exception as e:
+        logger.error(f"Shutdown error: {str(e)}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
