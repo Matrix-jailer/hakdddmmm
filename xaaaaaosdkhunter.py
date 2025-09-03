@@ -7,7 +7,6 @@ import random
 import string
 import time
 import base64
-import os
 from datetime import datetime
 from requests_toolbelt.multipart.encoder import MultipartEncoder
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -32,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with your actual bot token
+BOT_TOKEN = "8428745102:AAF5LXKMEtMTymU6vJkZTZ5Bxd1neruGfHE"  # Replace with your actual bot token
 ADMIN_ID = 7451622773  # Replace with your admin's Telegram user ID
 REGISTRATION_CHANNEL = "-1002237023678"  # Replace with registration channel ID
 RESULTS_CHANNEL = "-1002158129417"  # Replace with results channel ID
@@ -1338,13 +1337,17 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if batch_rotation_active:
                         batch_message_index = (batch_message_index + 1) % len(processing_messages)
                         stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        if stats['checked'] < stats['total']:
+                        try:
                             await processing_msg.edit_text(
                                 processing_messages[batch_message_index],
                                 reply_markup=create_stats_keyboard(),
                                 parse_mode="HTML"
                             )
-                except:
+                        except Exception as edit_error:
+                            # If edit fails, continue rotation
+                            pass
+                except Exception as rotation_error:
+                    # Continue rotation even if there's an error
                     pass
         
         # Start batch message rotation task
@@ -1381,16 +1384,9 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 else:
                                     check_stats[user_id]['declined'] += 1
                         
-                        # Update processing message with current stats
+                        # Update processing message with current stats (but don't interrupt rotation)
                         stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        try:
-                            await processing_msg.edit_text(
-                                f"💳 Processing cards... {stats['checked']}/{stats['total']} 💳",
-                                reply_markup=create_stats_keyboard(),
-                                parse_mode="HTML"
-                            )
-                        except:
-                            pass
+                        # Let the rotation continue, don't force update here to avoid conflicts
                         
                         # Send valid cards instantly to user
                         if is_valid:
@@ -1743,10 +1739,6 @@ async def main():
     try:
         init_db()
         application = Application.builder().token(BOT_TOKEN).build()
-        
-        # Initialize the bot
-        await application.initialize()
-        await application.bot.initialize()
 
         application.add_handler(CommandHandler("start", start))
         application.add_handler(CommandHandler("pp", lambda update, context: asyncio.create_task(pp_check(update, context))))
@@ -1760,30 +1752,12 @@ async def main():
         application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
         application.add_error_handler(error_handler)
 
-        await application.start()
-        await application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-        
-        # Keep the bot running
-        import signal
-        stop_signals = (signal.SIGINT, signal.SIGTERM)
-        for sig in stop_signals:
-            signal.signal(sig, lambda s, f: asyncio.create_task(shutdown(application)))
-        
-        # Keep running until stopped
-        await asyncio.Event().wait()
+        # Start polling
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
         
     except Exception as e:
         logger.error(f"Main function error: {str(e)}")
         print("Failed to start the bot. Please check the logs for details.")
-
-async def shutdown(application):
-    """Gracefully shutdown the bot"""
-    try:
-        await application.updater.stop()
-        await application.stop()
-        await application.shutdown()
-    except Exception as e:
-        logger.error(f"Shutdown error: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())
