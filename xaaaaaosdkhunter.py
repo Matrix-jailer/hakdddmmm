@@ -197,57 +197,64 @@ def generate_random_code(length=32):
     letters_and_digits = string.ascii_letters + string.digits
     return ''.join(random.choice(letters_and_digits) for _ in range(length))
 
-def get_bin_info(bin_number):
-    # Multiple BIN lookup APIs for fallback
+import asyncio
+import httpx
+
+async def fetch_bin(api_url):
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:  # increased timeout from 8 -> 20
+            response = await client.get(api_url)
+        if response.status_code == 200:
+            data = response.json()
+            if data and isinstance(data, dict):
+                if 'voidex.dev' in api_url and 'brand' in data:
+                    return {
+                        'brand': data.get('brand', 'UNKNOWN'),
+                        'type': data.get('type', 'UNKNOWN'),
+                        'level': data.get('level', 'UNKNOWN'),
+                        'bank': data.get('bank', 'UNKNOWN'),
+                        'country': data.get('country_name', 'UNKNOWN'),
+                        'emoji': data.get('country_flag', '🏳️')
+                    }
+                elif 'binlist.net' in api_url:
+                    country = data.get('country', {})
+                    bank = data.get('bank', {})
+                    return {
+                        'brand': data.get('brand', 'UNKNOWN').upper(),
+                        'type': data.get('type', 'UNKNOWN').upper(),
+                        'level': data.get('brand', 'UNKNOWN').upper(),
+                        'bank': bank.get('name', 'UNKNOWN'),
+                        'country': country.get('name', 'UNKNOWN'),
+                        'emoji': country.get('emoji', '🏳️')
+                    }
+                elif 'bins.su' in api_url:
+                    return {
+                        'brand': data.get('vendor', 'UNKNOWN').upper(),
+                        'type': data.get('type', 'UNKNOWN').upper(),
+                        'level': data.get('level', 'UNKNOWN').upper(),
+                        'bank': data.get('bank', 'UNKNOWN'),
+                        'country': data.get('country_name', 'UNKNOWN'),
+                        'emoji': data.get('country_flag', '🏳️')
+                    }
+    except Exception as e:
+        print(f"Error fetching {api_url}: {e}")
+    return None
+
+async def get_bin_info_async(bin_number):
     apis = [
         f'https://api.voidex.dev/api/bin?bin={bin_number}',
         f'https://lookup.binlist.net/{bin_number}',
         f'https://bins.su/{bin_number}'
     ]
     
-    for api_url in apis:
-        try:
-            response = requests.get(api_url, timeout=8)
-            if response.status_code == 200:
-                try:
-                    data = response.json()
-                    if data and isinstance(data, dict):
-                        # Handle different API response formats
-                        if 'voidex.dev' in api_url:
-                            if 'brand' in data:
-                                return {
-                                    'brand': data.get('brand', 'UNKNOWN'),
-                                    'type': data.get('type', 'UNKNOWN'),
-                                    'level': data.get('level', 'UNKNOWN'),
-                                    'bank': data.get('bank', 'UNKNOWN'),
-                                    'country': data.get('country_name', 'UNKNOWN'),
-                                    'emoji': data.get('country_flag', '🏳️')
-                                }
-                        elif 'binlist.net' in api_url:
-                            country = data.get('country', {})
-                            bank = data.get('bank', {})
-                            return {
-                                'brand': data.get('brand', 'UNKNOWN').upper(),
-                                'type': data.get('type', 'UNKNOWN').upper(),
-                                'level': data.get('brand', 'UNKNOWN').upper(),
-                                'bank': bank.get('name', 'UNKNOWN'),
-                                'country': country.get('name', 'UNKNOWN'),
-                                'emoji': country.get('emoji', '🏳️')
-                            }
-                        elif 'bins.su' in api_url:
-                            return {
-                                'brand': data.get('vendor', 'UNKNOWN').upper(),
-                                'type': data.get('type', 'UNKNOWN').upper(),
-                                'level': data.get('level', 'UNKNOWN').upper(),
-                                'bank': data.get('bank', 'UNKNOWN'),
-                                'country': data.get('country_name', 'UNKNOWN'),
-                                'emoji': data.get('country_flag', '🏳️')
-                            }
-                except (ValueError, TypeError):
-                    continue
-        except Exception:
-            continue
-    
+    tasks = [fetch_bin(url) for url in apis]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Return first successful response
+    for res in results:
+        if res:
+            return res
+
     # Fallback if all APIs fail
     return {
         'brand': 'UNKNOWN',
@@ -257,6 +264,10 @@ def get_bin_info(bin_number):
         'country': 'UNKNOWN',
         'emoji': '🏳️'
     }
+
+# Synchronous wrapper to call from existing script
+def get_bin_info(bin_number):
+    return asyncio.run(get_bin_info_async(bin_number))
 
 def check_card(cc_line, proxies=None, user_info=None):
     start_time = time.time()
