@@ -1585,6 +1585,14 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if user_id in check_stats:
                     del check_stats[user_id]
 
+    except Exception as e:
+        logger.error(f"Multiple CC check error: {str(e)}")
+        await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
+        active_checks.discard(user_id)
+        with stats_lock:
+            if user_id in check_stats:
+                del check_stats[user_id]
+
 # Admin command to deduct credits
 async def deduct_user_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
