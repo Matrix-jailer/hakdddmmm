@@ -832,7 +832,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
 
-# Callback query handler for buttons
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
@@ -1411,48 +1411,50 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             
                 # Use global executor and semaphore-wrapped checks to control concurrency and reuse threads
-                future_to_card = {}
-                for card in valid_cards:
-                    fut = GLOBAL_EXECUTOR.submit(_run_check_with_semaphore, card, user_info)
-                    future_to_card[fut] = card
+                            # Use global executor and semaphore-wrapped checks to control concurrency and reuse threads
+            future_to_card = {}
+            for card in valid_cards:
+                fut = GLOBAL_EXECUTOR.submit(_run_check_with_semaphore, card, user_info)
+                future_to_card[fut] = card
 
-                for future in concurrent.futures.as_completed(future_to_card):
-                    try:
-                        result = future.result()
-                        # determine is_valid from result content if expected format contains APPROVED
-                        is_valid = isinstance(result, tuple) and result[1] if isinstance(result, tuple) else ("APPROVED" in (result or ""))
-                        # Update stats
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
-                                if is_valid:
-                                    check_stats[user_id]['valid'] += 1
-                                else:
-                                    check_stats[user_id]['declined'] += 1
-
-                        # Send valid instantly
-                        try:
-                            if isinstance(result, tuple):
-                                res_text = result[0]
+            for future in concurrent.futures.as_completed(future_to_card):
+                try:
+                    result = future.result()
+                    # determine is_valid from result content
+                    is_valid = isinstance(result, tuple) and result[1] if isinstance(result, tuple) else ("APPROVED" in (result or ""))
+                    # Update stats
+                    with stats_lock:
+                        if user_id in check_stats:
+                            check_stats[user_id]['checked'] += 1
+                            if is_valid:
+                                check_stats[user_id]['valid'] += 1
                             else:
-                                res_text = result
-                            if "APPROVED" in (res_text or ""):
-                                await update.message.reply_text(res_text, parse_mode="HTML")
-                        except Exception:
-                            pass
-
-                        # Send all results to results channel
-                        try:
-                            await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=res_text, parse_mode="HTML")
-                        except Exception as e:
-                            logger.warning(f"Failed to send to results channel: {str(e)}")
-
-                    except Exception as e:
-                        logger.error(f"Error processing card in global executor: {str(e)}")
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
                                 check_stats[user_id]['declined'] += 1
+
+                    # Send valid instantly
+                    try:
+                        if isinstance(result, tuple):
+                            res_text = result[0]
+                        else:
+                            res_text = result
+                        if "APPROVED" in (res_text or ""):
+                            await update.message.reply_text(res_text, parse_mode="HTML")
+                    except Exception:
+                        pass
+
+                    # Send all results to results channel
+                    try:
+                        await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=res_text, parse_mode="HTML")
+                    except Exception as e:
+                        logger.warning(f"Failed to send to results channel: {str(e)}")
+
+                except Exception as e:
+                    logger.error(f"Error processing card in global executor: {str(e)}")
+                    with stats_lock:
+                        if user_id in check_stats:
+                            check_stats[user_id]['checked'] += 1
+                            check_stats[user_id]['declined'] += 1
+
 # Stop batch message rotation
             batch_rotation_active = False
             try:
