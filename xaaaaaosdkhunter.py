@@ -1066,6 +1066,701 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Button callback error: {str(e)}")
         await query.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
 
+# Multiple CC check command handler
+async def mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    asyncio.create_task(handle_mpp_check(update, context))
+
+async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        user_id = user.id
+        db_user = get_user(user_id)
+
+        if not db_user:
+            await update.message.reply_text(
+                "Register First You MF /start 🤬",
+                parse_mode="HTML"
+            )
+            return
+
+        if context.user_data.get("state") != "check_cc":
+            return
+
+        # Get the message text and extract card lines
+        message_text = update.message.text
+        if not message_text.startswith('/mpp '):
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Are you retard? 🦢\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n5154620027617644|03|31|557"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+
+        # Extract card lines from the message
+        card_text = message_text[5:].strip()  # Remove '/mpp ' prefix
+        card_lines = [line.strip() for line in card_text.split('\n') if line.strip()]
+        
+        if not card_lines:
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ No cards provided! 🦢\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n5154620027617644|03|31|557"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+
+        # Validate card format for all cards
+        valid_cards = []
+        for card_line in card_lines:
+            if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}
+
+async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user = update.effective_user
+        user_id = user.id
+        db_user = get_user(user_id)
+
+        if not db_user:
+            await update.message.reply_text(
+                "Register First You MF /start 🤬",
+                parse_mode="HTML"
+            )
+            return
+
+        # Enhanced concurrency control with per-user semaphores
+        if user_id not in user_semaphores:
+            user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
+
+        if context.user_data.get("state") != "check_cc":
+            return
+
+        # Check credits FIRST before any processing
+        if user_id != ADMIN_ID:
+            if db_user[3] <= 0:
+                # Styled insufficient credits message with owner contact button
+                owner_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")]
+                ])
+                
+                insufficient_message = f"""
+<b>💳 Insufficient Credits! 💸</b>
+━━━━━━━━━━━━━━━━
+<b>😔 Oops! You're out of credits</b>
+<b>💰 Current Balance:</b> 0 Credits
+<b>🎯 Required:</b> 1 Credit minimum
+
+<b>💡 Get more credits:</b>
+• Contact the owner below 👇
+• Purchase credit packages 💎
+• Enjoy premium checking! ⚡
+━━━━━━━━━━━━━━━━
+                """
+                
+                await update.message.reply_text(
+                    insufficient_message, 
+                    reply_markup=owner_keyboard,
+                    parse_mode="HTML"
+                )
+                return
+
+        args = context.args
+        if not args or len(args) != 1:
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Are you retard? 🦢\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Card\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+
+        cc_line = args[0]
+        
+        # Validate CC format
+        if not re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}$', cc_line):
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Invalid CC format! 🦢\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Card\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+
+        # Add user to active checks
+        active_checks.add(user_id)
+
+        # Optimized processing messages with faster rotation
+        processing_messages = [
+            "💳 Processing.",
+            "💳 Processing..",
+            "💳 Processing...",
+            "💳 Secure checking 🔒",
+            "💳 Validating gateway 🌐",
+            "💳 Analyzing data 📊",
+            "💳 Checking card ⏳",
+            "💳 Connecting PayPal 🔗",
+            "💳 Verifying details ✅",
+            "💳 Processing 💰"
+        ]
+        
+        processing_msg = await update.message.reply_text(processing_messages[0])
+        
+        # Start continuous message rotation in background
+        message_index = 0
+        rotation_active = True
+        
+        async def rotate_messages():
+            nonlocal message_index, rotation_active
+            while rotation_active:
+                try:
+                    await asyncio.sleep(0.8)  # Faster rotation for better UX
+                    if rotation_active:
+                        message_index = (message_index + 1) % len(processing_messages)
+                        await processing_msg.edit_text(processing_messages[message_index])
+                except:
+                    pass
+        
+        # Start message rotation task
+        rotation_task = asyncio.create_task(rotate_messages())
+
+        try:
+            # Check credits BEFORE starting any processing messages
+            if user_id != ADMIN_ID:
+                update_credits(user_id, db_user[3] - 1)
+
+            # Get user info for check_card function
+            user_info = {
+                'user_id': user_id,
+                'username': user.first_name,
+                'credits': db_user[3] - 1 if user_id != ADMIN_ID else float('inf')
+            }
+
+            # Use semaphores to control concurrency
+            async with global_semaphore:
+                async with user_semaphores[user_id]:
+                    # Run CC check asynchronously for better performance
+                    result = await check_card_async(cc_line, None, user_info)
+
+            # Stop message rotation
+            rotation_active = False
+            try:
+                rotation_task.cancel()
+            except:
+                pass
+            
+            try:
+                await processing_msg.edit_text(result, parse_mode="HTML")
+            except Exception as e:
+                if "Message is not modified" in str(e):
+                    pass
+                else:
+                    raise
+
+            try:
+                await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
+            except Exception as e:
+                logger.warning(f"Failed to send to results channel: {str(e)}")
+
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Let's start Checking 💥\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+
+        except Exception as e:
+            # Stop message rotation on error
+            rotation_active = False
+            try:
+                rotation_task.cancel()
+            except:
+                pass
+            
+            logger.error(f"CC check error: {str(e)}")
+            await processing_msg.edit_text("Error: Failed to process the card. Please try again.", parse_mode="HTML")
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Let's start Checking 💥\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        finally:
+            # Remove user from active checks
+            active_checks.discard(user_id)
+
+    except Exception as e:
+        logger.error(f"Working on some Fault: {str(e)}")
+        await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
+        active_checks.discard(user_id)
+        with stats_lock:
+            if user_id in check_stats:
+                del check_stats[user_id]
+
+# Admin command to deduct credits
+async def deduct_user_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if update.effective_user.id != ADMIN_ID:
+            return
+
+        args = context.args
+        if len(args) != 2:
+            await update.message.reply_text("Usage: /deductusercredit <user_id> <credits>")
+            return
+
+        try:
+            user_id = int(args[0])
+            credits = int(args[1])
+            db_user = get_user(user_id)
+            if not db_user:
+                await update.message.reply_text("User not found.")
+                return
+            
+            # Check if user has enough credits
+            current_credits = db_user[3]
+            if current_credits < credits:
+                await update.message.reply_text(f"User only has {current_credits} credits. Cannot deduct {credits} credits.")
+                return
+            
+            # Get user info
+            try:
+                user_info = await context.bot.get_chat(user_id)
+                username = f"@{user_info.username}" if user_info.username else user_info.first_name
+                display_name = f"<a href='tg://user?id={user_id}'>{user_info.first_name}</a>"
+            except:
+                username = f"User {user_id}"
+                display_name = f"User {user_id}"
+            
+            # Deduct credits
+            new_credits = current_credits - credits
+            update_credits(user_id, new_credits)
+            current_date = datetime.now().strftime("%d/%m/%Y")
+            
+            # Message for admin
+            admin_message = f"""
+<b>Credits Deducted ⚠️</b>
+━━━━━━━━━━━━━
+<b>🆔 User:</b> {display_name}
+<b>💸 Credits Deducted:</b> {credits}
+<b>💰 Remaining Credits:</b> {new_credits}
+<b>📅 Date:</b> {current_date}
+━━━━━━━━━━━━━
+            """
+            
+            # Message for user
+            user_message = f"""
+<b>Credits Deducted ⚠️</b>
+━━━━━━━━━━━━━
+<b>💸 Credits Deducted:</b> {credits}
+<b>💰 Remaining Credits:</b> {new_credits}
+<b>📅 Date:</b> {current_date}
+<b>💡 Contact owner for more credits!</b>
+━━━━━━━━━━━━━
+            """
+            
+            # Send to admin
+            await update.message.reply_text(admin_message, parse_mode="HTML")
+            
+            # Send to user
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=user_message,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send deduction notification to user {user_id}: {str(e)}")
+                await update.message.reply_text(f"Credits deducted but failed to notify user: {str(e)}")
+                
+        except ValueError:
+            await update.message.reply_text("Invalid user ID or credits amount.")
+    except Exception as e:
+        logger.error(f"Deduct credit command error: {str(e)}")
+        await update.message.reply_text("An error occurred while deducting credits.", parse_mode="HTML")
+
+# Admin command to add credits
+async def add_user_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if update.effective_user.id != ADMIN_ID:
+            return
+
+        args = context.args
+        if len(args) != 2:
+            await update.message.reply_text("Usage: /addusercredit <user_id> <credits>")
+            return
+
+        try:
+            user_id = int(args[0])
+            credits = int(args[1])
+            db_user = get_user(user_id)
+            if not db_user:
+                await update.message.reply_text("User not found.")
+                return
+            
+            # Get user info
+            try:
+                user_info = await context.bot.get_chat(user_id)
+                username = f"@{user_info.username}" if user_info.username else user_info.first_name
+                display_name = f"<a href='tg://user?id={user_id}'>{user_info.first_name}</a>"
+            except:
+                username = f"User {user_id}"
+                display_name = f"User {user_id}"
+            
+            update_credits(user_id, credits, add=True)
+            current_date = datetime.now().strftime("%d/%m/%Y")
+            
+            # Message for admin
+            admin_message = f"""
+<b>Credits Added ✅</b>
+━━━━━━━━━━━━━
+<b>🆔 User:</b> {display_name}
+<b>💰 Credits Added:</b> {credits}
+<b>📅 Date:</b> {current_date}
+━━━━━━━━━━━━━
+            """
+            
+            # Message for user
+            user_message = f"""
+<b>Credits Added ✅</b>
+━━━━━━━━━━━━━
+<b>💰 Credits Added:</b> {credits}
+<b>📅 Date:</b> {current_date}
+<b>🎉 Enjoy your credits!</b>
+━━━━━━━━━━━━━
+            """
+            
+            # Send to admin
+            await update.message.reply_text(admin_message, parse_mode="HTML")
+            
+            # Send to user
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text=user_message,
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.warning(f"Failed to send credit notification to user {user_id}: {str(e)}")
+                await update.message.reply_text(f"Credits added but failed to notify user: {str(e)}")
+                
+        except ValueError:
+            await update.message.reply_text("Invalid user ID or credits amount.")
+    except Exception as e:
+        logger.error(f"Add credit command error: {str(e)}")
+        await update.message.reply_text("An error occurred while adding credits.", parse_mode="HTML")
+
+# Admin command to broadcast message
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if update.effective_user.id != ADMIN_ID:
+            return
+
+        # Get message text after /broadcast command
+        message_text = update.message.text
+        if not message_text.startswith('/broadcast '):
+            await update.message.reply_text("Usage: /broadcast <message>")
+            return
+
+        broadcast_message = message_text[11:].strip()  # Remove '/broadcast ' prefix
+        
+        if not broadcast_message:
+            await update.message.reply_text("Please provide a message to broadcast.")
+            return
+
+        users = get_all_users()
+        if not users:
+            await update.message.reply_text("No registered users to broadcast to.")
+            return
+
+        success_count = 0
+        failed_count = 0
+        
+        status_msg = await update.message.reply_text(f"Broadcasting to {len(users)} users...")
+        
+        for user in users:
+            try:
+                await context.bot.send_message(
+                    chat_id=user[0],  # user_id is first column
+                    text=broadcast_message,
+                    parse_mode="HTML"
+                )
+                success_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to send broadcast to user {user[0]}: {str(e)}")
+                failed_count += 1
+        
+        await status_msg.edit_text(
+            f"Broadcast completed!\n"
+            f"✅ Sent to: {success_count} users\n"
+            f"❌ Failed: {failed_count} users"
+        )
+        
+    except Exception as e:
+        logger.error(f"Broadcast command error: {str(e)}")
+        await update.message.reply_text("An error occurred while broadcasting.", parse_mode="HTML")
+
+# Admin command to list users
+async def cc_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if update.effective_user.id != ADMIN_ID:
+            return
+
+        users = get_all_users()
+        if not users:
+            await update.message.reply_text("No registered users.")
+            return
+
+        message = ""
+        for i, user in enumerate(users, 1):
+            message += (
+                f"User - {i}\n"
+                f"Username - {user[1]}\n"
+                f"ChatID - {user[0]}\n"
+                f"Date Joined - {user[2]}\n"
+                f"Credits available - {'∞' if user[0] == ADMIN_ID else user[3]}\n\n"
+            )
+        await update.message.reply_text(message)
+    except Exception as e:
+        logger.error(f"Users command error: {str(e)}")
+        await update.message.reply_text("An error occurred while listing users.", parse_mode="HTML")
+
+# Handle unknown commands or messages
+async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user_id = update.effective_user.id
+        db_user = get_user(user_id)
+        
+        # If user is actively checking, delete their message and ignore
+        if user_id in active_checks:
+            try:
+                await update.message.delete()
+            except:
+                pass
+            return
+        
+        # Only show the check CC message if user is registered AND in check_cc state
+        if db_user and context.user_data.get("state") == "check_cc":
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Are you retard? 🦢\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Card\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        elif not db_user:
+            # For unregistered users, just tell them to register
+            await update.message.reply_text("Please use /start to register first.", parse_mode="HTML")
+        else:
+            # For registered users not in check_cc state, show main menu
+            await show_main_menu(update, context)
+            
+    except Exception as e:
+        logger.error(f"Unknown command error: {str(e)}")
+        await update.message.reply_text("An error occurred. Please use /start to begin.", parse_mode="HTML")
+
+# Error handler
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Update {update} caused error {context.error}")
+    if update and update.message:
+        await update.message.reply_text("An unexpected error occurred. Please try again later.", parse_mode="HTML")
+
+# Main function to run the bot
+def main():
+    try:
+        init_db()
+        application = Application.builder().token(BOT_TOKEN).build()
+
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(CommandHandler("pp", lambda update, context: asyncio.create_task(pp_check(update, context))))
+        application.add_handler(CommandHandler("mpp", lambda update, context: asyncio.create_task(mpp_check(update, context))))
+        application.add_handler(CommandHandler("addusercredit", add_user_credit))
+        application.add_handler(CommandHandler("deductusercredit", deduct_user_credit))
+        application.add_handler(CommandHandler("broadcast", broadcast))
+        application.add_handler(CommandHandler("ccusers", cc_users))
+        application.add_handler(CallbackQueryHandler(button_callback))
+        # Handle all messages (text, commands, URLs, etc.) when user is checking
+        application.add_handler(MessageHandler(filters.ALL & ~filters.UpdateType.EDITED, unknown))
+        application.add_error_handler(error_handler)
+
+        # Start polling - synchronous method
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        
+    except Exception as e:
+        logger.error(f"Main function error: {str(e)}")
+        print("Failed to start the bot. Please check the logs for details.")
+
+if __name__ == "__main__":
+    main(), card_line):
+                valid_cards.append(card_line)
+
+        if not valid_cards:
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Invalid CC format! 🦢\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n5154620027617644|03|31|557"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+
+        # Check credits BEFORE processing
+        if user_id != ADMIN_ID:
+            if db_user[3] < len(valid_cards):
+                owner_keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")]
+                ])
+                
+                insufficient_message = f"""
+<b>💳 Insufficient Credits! 💸</b>
+━━━━━━━━━━━━━━━━
+<b>😔 Oops! You need more credits</b>
+<b>💰 Current Balance:</b> {db_user[3]} Credits
+<b>🎯 Required:</b> {len(valid_cards)} Credits
+
+<b>💡 Get more credits:</b>
+• Contact the owner below 👇
+• Purchase credit packages 💎
+• Enjoy premium checking! ⚡
+━━━━━━━━━━━━━━━━
+                """
+                
+                await update.message.reply_text(
+                    insufficient_message, 
+                    reply_markup=owner_keyboard,
+                    parse_mode="HTML"
+                )
+                return
+
+        # Enhanced concurrency control with per-user semaphores
+        if user_id not in user_semaphores:
+            user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
+
+        # Add user to active checks
+        active_checks.add(user_id)
+
+        # Processing message
+        processing_msg = await update.message.reply_text(f"💳 Processing {len(valid_cards)} cards...")
+        
+        try:
+            # Deduct credits BEFORE processing
+            if user_id != ADMIN_ID:
+                update_credits(user_id, db_user[3] - len(valid_cards))
+
+            # Get user info for check_card function
+            user_info = {
+                'user_id': user_id,
+                'username': user.first_name,
+                'credits': db_user[3] - len(valid_cards) if user_id != ADMIN_ID else float('inf')
+            }
+
+            results = []
+            
+            # Process cards with controlled concurrency
+            async def process_card(card_line):
+                async with global_semaphore:
+                    async with user_semaphores[user_id]:
+                        return await check_card_async(card_line, None, user_info)
+
+            # Process all cards concurrently but with limits
+            tasks = [process_card(card) for card in valid_cards]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Combine all results
+            combined_result = f"<b>💳 Bulk Check Results ({len(valid_cards)} cards)</b>\n\n"
+            
+            for i, result in enumerate(results):
+                if isinstance(result, Exception):
+                    combined_result += f"Card {i+1}: Error - {str(result)[:50]}...\n\n"
+                else:
+                    combined_result += f"{result}\n\n"
+
+            # Update processing message with results
+            try:
+                await processing_msg.edit_text(combined_result, parse_mode="HTML")
+            except Exception as e:
+                if "Message is not modified" in str(e):
+                    pass
+                else:
+                    # If message is too long, send new message
+                    await processing_msg.edit_text(f"✅ Completed checking {len(valid_cards)} cards. Results sent below.", parse_mode="HTML")
+                    await update.message.reply_text(combined_result, parse_mode="HTML")
+
+            # Send to results channel
+            try:
+                await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=combined_result, parse_mode="HTML")
+            except Exception as e:
+                logger.warning(f"Failed to send to results channel: {str(e)}")
+
+            # Show menu again
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Let's start Checking 💥\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+
+        except Exception as e:
+            logger.error(f"Multiple CC check error: {str(e)}")
+            await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Let's start Checking 💥\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+        finally:
+            # Remove user from active checks
+            active_checks.discard(user_id)
+
+    except Exception as e:
+        logger.error(f"Multiple CC check error: {str(e)}")
+        await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
+        active_checks.discard(user_id)
+        with stats_lock:
+            if user_id in check_stats:
+                del check_stats[user_id]
+
 # Single CC check command handler
 async def pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     asyncio.create_task(handle_pp_check(update, context))
