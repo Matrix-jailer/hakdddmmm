@@ -1505,7 +1505,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.error(f"Multiple CC check error: {str(e)}")
+            logger.error("Multiple CC check error")
             await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
         finally:
             # Clean up
