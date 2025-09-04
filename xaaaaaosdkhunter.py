@@ -30,6 +30,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Deployment verification timestamp
+DEPLOYMENT_TIMESTAMP = "2025-01-15 18:45:00 UTC"
+print(f"Bot deployment timestamp: {DEPLOYMENT_TIMESTAMP}")
+logger.info(f"Bot started with deployment timestamp: {DEPLOYMENT_TIMESTAMP}")
+
 # Bot configuration
 BOT_TOKEN = "8102305783:AAFimgJTNn7JeqZm-Ex32Nv5QOnm_QOcq14"  # Replace with your actual bot token
 ADMIN_ID = 7451622773  # Replace with your admin's Telegram user ID
