@@ -1121,8 +1121,20 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Validate card format for all cards
         valid_cards = []
         for card_line in card_lines:
-            if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}
+            if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}$', card_line):
+                valid_cards.append(card_line)
 
+        if not valid_cards:
+            await update.message.reply_text("⚠️ No valid card lines detected.", parse_mode="HTML")
+            return
+
+        # 🔥 Here you can now loop over valid_cards and run check_card_async or whatever logic you want
+        # Example:
+        for card in valid_cards:
+            await update.message.reply_text(f"Processing: <code>{card}</code>", parse_mode="HTML")
+
+    except Exception as e:
+        await update.message.reply_text(f"Error: {str(e)}", parse_mode="HTML")
 async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user = update.effective_user
