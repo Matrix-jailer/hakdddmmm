@@ -31,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot configuration
-BOT_TOKEN = "8428745102:AAFb1qq5SrVAnqcFusDrITcu0fFN5_Eh5Ns"  # Replace with your actual bot token
+BOT_TOKEN = "8102305783:AAFimgJTNn7JeqZm-Ex32Nv5QOnm_QOcq14"  # Replace with your actual bot token
 ADMIN_ID = 7451622773  # Replace with your admin's Telegram user ID
 REGISTRATION_CHANNEL = "-1002237023678"  # Replace with registration channel ID
 RESULTS_CHANNEL = "-1002158129417"  # Replace with results channel ID
