@@ -379,7 +379,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'referer': f'{site_url}/shop/i-buy/',
             }
             
-            try:
+        try:
                 async with session.post(f'{site_url}/shop/i-buy/', headers=headers, data=form_data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
                     if response.status != 200:
                         logger.warning(f"Add to cart failed with status {response.status}")
