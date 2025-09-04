@@ -334,9 +334,9 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
         timeout = aiohttp.ClientTimeout(total=30)
         async with aiohttp.ClientSession(timeout=timeout) as session:
 
-        # Encoded site URL to prevent leaking
-        encoded_site = base64.b64decode('c3dpdGNodXBjYi5jb20=').decode('utf-8')
-        site_url = f'https://{encoded_site}'
+            # Encoded site URL to prevent leaking
+            encoded_site = base64.b64decode('c3dpdGNodXBjYi5jb20=').decode('utf-8')
+            site_url = f'https://{encoded_site}'
 
             # Get a random proxy for this request
             proxy = get_random_proxy()
