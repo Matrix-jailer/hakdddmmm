@@ -506,7 +506,6 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'upgrade-insecure-requests': '1',
                 'user-agent': user,
             }
-            
             params = {
                 'sessionID': session_id,
                 'buttonSessionID': button_session_id,
