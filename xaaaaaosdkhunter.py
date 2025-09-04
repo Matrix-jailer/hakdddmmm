@@ -1406,23 +1406,19 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
             }
 
-            # Use ThreadPoolExecutor for concurrent checking
+                        # Use global executor and process cards sequentially but non-blocking
             loop = asyncio.get_event_loop()
-            
-            
-                # Use global executor and semaphore-wrapped checks to control concurrency and reuse threads
-                            # Use global executor and semaphore-wrapped checks to control concurrency and reuse threads
-            future_to_card = {}
-            for card in valid_cards:
-                fut = GLOBAL_EXECUTOR.submit(_run_check_with_semaphore, card, user_info)
-                future_to_card[fut] = card
 
-            for future in concurrent.futures.as_completed(future_to_card):
+            # Process cards one-by-one using the shared GLOBAL_EXECUTOR.
+            # Each check runs in the threadpool; awaiting lets the event loop
+            # handle other users / buttons between checks.
+            for card in valid_cards:
                 try:
-                    result = future.result()
-                    # determine is_valid from result content
-                    is_valid = isinstance(result, tuple) and result[1] if isinstance(result, tuple) else ("APPROVED" in (result or ""))
-                    # Update stats
+                    # Submit to the shared executor and await completion
+                    fut = loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info)
+                    result, is_valid = await fut
+
+                    # Update stats safely
                     with stats_lock:
                         if user_id in check_stats:
                             check_stats[user_id]['checked'] += 1
@@ -1431,31 +1427,27 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             else:
                                 check_stats[user_id]['declined'] += 1
 
-                    # Send valid instantly
-                    try:
-                        if isinstance(result, tuple):
-                            res_text = result[0]
-                        else:
-                            res_text = result
-                        if "APPROVED" in (res_text or ""):
-                            await update.message.reply_text(res_text, parse_mode="HTML")
-                    except Exception:
-                        pass
+                    # Send valid instantly to user
+                    if is_valid:
+                        try:
+                            await update.message.reply_text(result, parse_mode="HTML")
+                        except Exception:
+                            pass
 
-                    # Send all results to results channel
+                    # Send every result to results channel (best-effort)
                     try:
-                        await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=res_text, parse_mode="HTML")
+                        await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
                     except Exception as e:
                         logger.warning(f"Failed to send to results channel: {str(e)}")
 
                 except Exception as e:
-                    logger.error(f"Error processing card in global executor: {str(e)}")
+                    logger.error(f"Error processing card for user {user_id}: {str(e)}")
                     with stats_lock:
                         if user_id in check_stats:
                             check_stats[user_id]['checked'] += 1
                             check_stats[user_id]['declined'] += 1
+                    continue
 
-# Stop batch message rotation
             batch_rotation_active = False
             try:
                 batch_rotation_task.cancel()
