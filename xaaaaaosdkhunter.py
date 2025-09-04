@@ -249,22 +249,64 @@ import concurrent.futures as _cf  # local alias to avoid shadowing
 GLOBAL_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=60)
 CHECK_SEMAPHORE = threading.BoundedSemaphore(60)
 
+
+def country_code_to_flag(country_code):
+    """Convert ISO alpha-2 country code to emoji flag. Returns fallback '🏳️' if invalid."""
+    try:
+        cc = (country_code or "").upper()
+        if len(cc) != 2 or not cc.isalpha():
+            return "🏳️"
+        return "".join(chr(0x1F1E6 + ord(c) - ord('A')) for c in cc)
+    except Exception:
+        return "🏳️"
+
 def _parse_bincheck_html(html_text):
     soup = BeautifulSoup(html_text, "html.parser")
     rows = soup.find_all("tr")
-    results = {}
+    results_raw = {}
     for row in rows:
         cols = row.find_all("td")
         if len(cols) == 2:
             key = cols[0].get_text(strip=True)
-            val = cols[1].get_text(strip=True)
-            results[key] = val
-    brand = results.get("Card Brand", results.get("Brand", "UNKNOWN"))
-    card_type = results.get("Card Type", results.get("Type", "UNKNOWN"))
-    level = results.get("Card Level", results.get("Level", "UNKNOWN"))
-    bank = results.get("Issuer Name / Bank", results.get("Bank", results.get("Issuer", "UNKNOWN")))
-    country = results.get("Country", results.get("Country Name", "UNKNOWN"))
-    emoji = results.get("Country Flag", "🏳️")
+            # Special handling: ISO Country Name often has an <a href="/us"> COUNTRY </a>
+            if "ISO Country Name" in key or "ISO Country" in key or ("Country" == key.strip()):
+                a = cols[1].find("a")
+                if a:
+                    country_name = a.get_text(strip=True)
+                    href = a.get("href", "").strip()
+                    country_code = ""
+                    # href like '/us' or '/us/' or '/country/us'
+                    if href.startswith("/"):
+                        parts = href.strip("/").split("/")
+                        if parts:
+                            country_code = parts[-1]
+                    results_raw[key] = {"name": country_name, "code": country_code}
+                    continue
+            # default behavior
+            results_raw[key] = cols[1].get_text(strip=True)
+
+    # Map keys to the format used elsewhere
+    brand = results_raw.get("Card Brand", results_raw.get("Brand", "UNKNOWN"))
+    card_type = results_raw.get("Card Type", results_raw.get("Type", "UNKNOWN"))
+    level = results_raw.get("Card Level", results_raw.get("Level", "UNKNOWN"))
+    bank = results_raw.get("Issuer Name / Bank", results_raw.get("Bank", results_raw.get("Issuer", "UNKNOWN")))
+
+    # Country extraction: try ISO Country Name entry first, then fallbacks
+    country = "UNKNOWN"
+    emoji = "🏳️"
+    # try ISO Country Name keys
+    for key in ("ISO Country Name", "ISO Country", "Country"):
+        v = results_raw.get(key)
+        if isinstance(v, dict):
+            country = v.get("name", "UNKNOWN")
+            code = v.get("code", "")
+            emoji = country_code_to_flag(code) if code else "🏳️"
+            break
+        elif isinstance(v, str) and v:
+            country = v
+            emoji = "🏳️"
+            break
+
     return {
         'brand': brand if brand else "UNKNOWN",
         'type': card_type if card_type else "UNKNOWN",
@@ -273,7 +315,6 @@ def _parse_bincheck_html(html_text):
         'country': country if country else "UNKNOWN",
         'emoji': emoji if emoji else "🏳️"
     }
-
 def get_bin_info(bin_number: str, timeout: int = 10):
     """Synchronous bin lookup using bincheck.io/details/{bin_number} (first 6 digits)."""
     try:
@@ -1412,87 +1453,52 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Process cards one-by-one using the shared GLOBAL_EXECUTOR.
             # Each check runs in the threadpool; awaiting lets the event loop
             # handle other users / buttons between checks.
-            for card in valid_cards:
-                try:
-                    # Submit to the shared executor and await completion
-                    fut = loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info)
-                    result, is_valid = await fut
+            
+            # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
+            # This keeps per-user checks bounded but faster than strict 1-by-1.
+            loop = asyncio.get_event_loop()
+            BATCH_SIZE = 4  # tune this per-user parallelism (4 is a good balance)
+            total_cards = len(valid_cards)
+            for i in range(0, total_cards, BATCH_SIZE):
+                batch = valid_cards[i:i + BATCH_SIZE]
+                # Submit the batch to the shared executor
+                tasks = [loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info) for card in batch]
 
-                    # Update stats safely
-                    with stats_lock:
-                        if user_id in check_stats:
-                            check_stats[user_id]['checked'] += 1
-                            if is_valid:
-                                check_stats[user_id]['valid'] += 1
-                            else:
-                                check_stats[user_id]['declined'] += 1
-
-                    # Send valid instantly to user
-                    if is_valid:
-                        try:
-                            await update.message.reply_text(result, parse_mode="HTML")
-                        except Exception:
-                            pass
-
-                    # Send every result to results channel (best-effort)
+                # Process results as they complete within the batch
+                for fut in asyncio.as_completed(tasks):
                     try:
-                        await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
+                        result, is_valid = await fut
+
+                        # Update stats safely
+                        with stats_lock:
+                            if user_id in check_stats:
+                                check_stats[user_id]['checked'] += 1
+                                if is_valid:
+                                    check_stats[user_id]['valid'] += 1
+                                else:
+                                    check_stats[user_id]['declined'] += 1
+
+                        # Send valid instantly to user
+                        if is_valid:
+                            try:
+                                await update.message.reply_text(result, parse_mode="HTML")
+                            except Exception:
+                                pass
+
+                        # Send every result to results channel (best-effort)
+                        try:
+                            await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
+                        except Exception as e:
+                            logger.warning(f"Failed to send to results channel: {str(e)}")
+
                     except Exception as e:
-                        logger.warning(f"Failed to send to results channel: {str(e)}")
-
-                except Exception as e:
-                    logger.error(f"Error processing card for user {user_id}: {str(e)}")
-                    with stats_lock:
-                        if user_id in check_stats:
-                            check_stats[user_id]['checked'] += 1
-                            check_stats[user_id]['declined'] += 1
-                    continue
-
-            batch_rotation_active = False
-            try:
-                batch_rotation_task.cancel()
-            except:
-                pass
-            
-            # Final update with inline keyboard buttons retained
-            final_stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-            
-            # Create final keyboard with completion status
-            final_keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"📊 Total: {final_stats['total']}", callback_data="stats_total"),
-                    InlineKeyboardButton(f"✅ Valid: {final_stats['valid']}", callback_data="stats_valid")
-                ],
-                [
-                    InlineKeyboardButton(f"🔍 Checked: {final_stats['checked']}", callback_data="stats_checked"),
-                    InlineKeyboardButton(f"❌ Declined: {final_stats['declined']}", callback_data="stats_declined")
-                ],
-                [
-                    InlineKeyboardButton("✅ COMPLETED ✅", callback_data="completed")
-                ]
-            ])
-            
-            await processing_msg.edit_text(
-                f"💳 Batch Processing Complete! 🎉\n"
-                f"📈 Results Summary Below 📈",
-                reply_markup=final_keyboard,
-                parse_mode="HTML"
-            )
-
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ Let's start Checking 💥\n"
-                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-
-        except Exception as e:
-            # Stop batch message rotation on error
+                        logger.error(f"Error processing card for user {user_id}: {str(e)}")
+                        with stats_lock:
+                            if user_id in check_stats:
+                                check_stats[user_id]['checked'] += 1
+                                check_stats[user_id]['declined'] += 1
+                        continue
+# Stop batch message rotation on error
             batch_rotation_active = False
             try:
                 batch_rotation_task.cancel()
