@@ -1005,7 +1005,7 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not db_user:
             await update.message.reply_text(
-                "Register First You MF /start 🤬",
+                "⚠️ Please register first using /start",
                 parse_mode="HTML"
             )
             return
@@ -1268,7 +1268,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not db_user:
             await update.message.reply_text(
-                "Register First You MF /start 🤬",
+                "⚠️ Please register first using /start",
                 parse_mode="HTML"
             )
             return
@@ -1457,7 +1457,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
             # This keeps per-user checks bounded but faster than strict 1-by-1.
             loop = asyncio.get_event_loop()
-            BATCH_SIZE = 4  # tune this per-user parallelism (4 is a good balance)
+            BATCH_SIZE = 5  # tune this per-user parallelism (4 is a good balance)
             total_cards = len(valid_cards)
             for i in range(0, total_cards, BATCH_SIZE):
                 batch = valid_cards[i:i + BATCH_SIZE]
@@ -1505,7 +1505,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.error("Multiple CC check error")
+            logger.error(f"Multiple CC check error: {str(e)}")
             await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
         finally:
             # Clean up
