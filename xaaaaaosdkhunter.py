@@ -1273,9 +1273,8 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Check if user already has an active check
+        # Prevent overlapping checks for same user
         if user_id in active_checks:
-            # Delete the message and ignore the request
             try:
                 await update.message.delete()
             except:
@@ -1285,87 +1284,60 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("state") != "check_cc":
             return
 
-        # Get all text after /mpp command
+        # Parse cards
         message_text = update.message.text
         if not message_text.startswith('/mpp '):
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ Are you retard? 🦢\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n4532123456789013|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
             return
 
-        cards_text = message_text[5:].strip()  # Remove '/mpp ' prefix
-        
-        # Split by newlines and filter valid cards
-        card_lines = [line.strip() for line in cards_text.split('\n') if line.strip()]
-        valid_cards = []
-        
-        for card_line in card_lines:
-            if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}$', card_line):
-                valid_cards.append(card_line)
-        
-        if not valid_cards:
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ No valid cards found! 🦢\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /mpp 4532123456789012|12|25|123\n4532123456789013|12|25|123"
+        cards_text = message_text[5:].strip()
+        card_lines = [line.strip() for line in cards_text.split("\n") if line.strip()]
+        valid_cards = [line for line in card_lines
+                       if re.match(r'^\d{13,19}\|\d{1,2}\|\d{2,4}\|\d{3,4}$', line)]
+
+        # Enforce card limits
+        if len(valid_cards) == 1:
+            await update.message.reply_text(
+                "⚠️ Single card detected. Try /pp for single checking 💳",
+                parse_mode="HTML"
             )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+            return
+        if len(valid_cards) < 2 or len(valid_cards) > 10:
+            await update.message.reply_text(
+                "⚠️ Please provide between 2 and 10 cards for /mpp.",
+                parse_mode="HTML"
+            )
             return
 
-        # Limit cards based on user credits
+        # Credit check
         if user_id != ADMIN_ID:
             max_cards = min(len(valid_cards), db_user[3], 10)
             if max_cards <= 0:
-                # Styled insufficient credits message with owner contact button
                 owner_keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton("💬 Contact Owner", url=f"tg://user?id={ADMIN_ID}")]
                 ])
-                
-                insufficient_message = f"""
-<b>💳 Insufficient Credits! 💸</b>
-━━━━━━━━━━━━━━━━
-<b>😔 Oops! You're out of credits</b>
-<b>💰 Current Balance:</b> {db_user[3]} Credits
-<b>🎯 Required:</b> {len(valid_cards)} Credits
-
-<b>💡 Get more credits:</b>
-• Contact the owner below 👇
-• Purchase credit packages 💎
-• Enjoy premium checking! ⚡
-━━━━━━━━━━━━━━━━
-                """
-                
                 await update.message.reply_text(
-                    insufficient_message, 
+                    "<b>💳 Insufficient Credits! 💸</b>\n"
+                    "━━━━━━━━━━━━━━━━\n"
+                    "😔 Oops! You're out of credits\n"
+                    f"💰 Current Balance: {db_user[3]} Credits\n"
+                    f"🎯 Required: {len(valid_cards)} Credits\n\n"
+                    "💡 Get more credits:\n"
+                    "• Contact the owner below 👇\n"
+                    "• Purchase credit packages 💎\n"
+                    "• Enjoy premium checking! ⚡\n"
+                    "━━━━━━━━━━━━━━━━",
                     reply_markup=owner_keyboard,
                     parse_mode="HTML"
                 )
-                
-                # Show main menu after insufficient credits message
                 await asyncio.sleep(1)
                 await show_main_menu(update, context)
-                
                 return
             valid_cards = valid_cards[:max_cards]
         else:
-            # Admin can check up to 10 cards
             valid_cards = valid_cards[:10]
 
-        # Add user to active checks
+        # Initialize stats
         active_checks.add(user_id)
-
-        # Initialize stats for this user
         with stats_lock:
             check_stats[user_id] = {
                 'total': len(valid_cards),
@@ -1374,188 +1346,134 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'declined': 0
             }
 
-        # Create initial keyboard with stats
+        # Create stats keyboard
         def create_stats_keyboard():
             stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
             return InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"📊 Total: {stats['total']}", callback_data="stats_total"),
-                    InlineKeyboardButton(f"✅ Valid: {stats['valid']}", callback_data="stats_valid")
-                ],
-                [
-                    InlineKeyboardButton(f"🔍 Checked: {stats['checked']}", callback_data="stats_checked"),
-                    InlineKeyboardButton(f"❌ Declined: {stats['declined']}", callback_data="stats_declined")
-                ]
+                [InlineKeyboardButton(f"📊 Total: {stats['total']}", callback_data="stats_total"),
+                 InlineKeyboardButton(f"✅ Valid: {stats['valid']}", callback_data="stats_valid")],
+                [InlineKeyboardButton(f"🔍 Checked: {stats['checked']}", callback_data="stats_checked"),
+                 InlineKeyboardButton(f"❌ Declined: {stats['declined']}", callback_data="stats_declined")]
             ])
 
-        # Enhanced processing messages for multiple cards with continuous rotation
+        # Processing messages
         processing_messages = [
-            "💳 Processing.",
-            "💳 Processing..",
-            "💳 Processing...",
-            "💳 Secure batch checking 🔒",
-            "💳 Validating gateways 🌐",
-            "💳 Analyzing batch data 📊",
-            "💳 Checking multiple cards ⏳",
-            "💳 Connecting PayPal 🔗",
-            "💳 Verifying batch details ✅",
+            "💳 Processing.", "💳 Processing..", "💳 Processing...",
+            "💳 Secure batch checking 🔒", "💳 Validating gateways 🌐",
+            "💳 Analyzing batch data 📊", "💳 Checking multiple cards ⏳",
+            "💳 Connecting PayPal 🔗", "💳 Verifying batch details ✅",
             "💳 Processing batch 💰"
         ]
-        
         processing_msg = await update.message.reply_text(
             processing_messages[0],
             reply_markup=create_stats_keyboard(),
             parse_mode="HTML"
         )
-        
-        # Start continuous message rotation for batch processing
+
+        # Rotate messages
         batch_message_index = 0
         batch_rotation_active = True
-        
         async def rotate_batch_messages():
             nonlocal batch_message_index, batch_rotation_active
             while batch_rotation_active:
+                await asyncio.sleep(0.8)
                 try:
-                    await asyncio.sleep(0.8)  # Same rotation speed as single card check
-                    if batch_rotation_active:
-                        batch_message_index = (batch_message_index + 1) % len(processing_messages)
-                        stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        try:
-                            await processing_msg.edit_text(
-                                processing_messages[batch_message_index],
-                                reply_markup=create_stats_keyboard(),
-                                parse_mode="HTML"
-                            )
-                        except Exception as edit_error:
-                            # If edit fails, continue rotation
-                            pass
-                except Exception as rotation_error:
-                    # Continue rotation even if there's an error
+                    batch_message_index = (batch_message_index + 1) % len(processing_messages)
+                    await processing_msg.edit_text(
+                        processing_messages[batch_message_index],
+                        reply_markup=create_stats_keyboard(),
+                        parse_mode="HTML"
+                    )
+                except:
                     pass
-        
-        # Start batch message rotation task
         batch_rotation_task = asyncio.create_task(rotate_batch_messages())
 
         try:
             if user_id != ADMIN_ID:
                 update_credits(user_id, db_user[3] - len(valid_cards))
 
-            # Get user info for check_card function
             user_info = {
                 'user_id': user_id,
                 'username': user.first_name,
                 'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
             }
 
-            # Use ThreadPoolExecutor for concurrent checking
             loop = asyncio.get_event_loop()
-            
-            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                # Submit all tasks
-                future_to_card = {executor.submit(check_single_card_threaded, card, user_info): card for card in valid_cards}
-                
-                for future in concurrent.futures.as_completed(future_to_card):
+            BATCH_SIZE = 5
+            for i in range(0, len(valid_cards), BATCH_SIZE):
+                batch = valid_cards[i:i + BATCH_SIZE]
+                tasks = [loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info)
+                         for card in batch]
+                for coro in asyncio.as_completed(tasks):
                     try:
-                        result, is_valid = future.result()
-                        
-                        # Update stats
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
-                                if is_valid:
-                                    check_stats[user_id]['valid'] += 1
-                                else:
-                                    check_stats[user_id]['declined'] += 1
-                        
-                        # Update processing message with current stats (but don't interrupt rotation)
-                        stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-                        # Let the rotation continue, don't force update here to avoid conflicts
-                        
-                        # Send valid cards instantly to user
-                        if is_valid:
-                            await update.message.reply_text(result, parse_mode="HTML")
-                        
-                        # Send all results to results channel
-                        try:
-                            await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
-                        except Exception as e:
-                            logger.warning(f"Failed to send to results channel: {str(e)}")
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing card: {str(e)}")
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
+                        result, is_valid = await coro
+                    except Exception as card_exc:
+                        logger.error(f"Card error for user {user_id}: {card_exc}")
+                        result, is_valid = f"❌ Error checking card", False
+
+                    # Update stats
+                    with stats_lock:
+                        if user_id in check_stats:
+                            check_stats[user_id]['checked'] += 1
+                            if is_valid:
+                                check_stats[user_id]['valid'] += 1
+                            else:
                                 check_stats[user_id]['declined'] += 1
 
-            # Stop batch message rotation
+                    # Send valid immediately
+                    if is_valid:
+                        await update.message.reply_text(result, parse_mode="HTML")
+
+                    # Send all results to channel
+                    try:
+                        await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
+                    except Exception as send_err:
+                        logger.warning(f"Failed to send to results channel: {send_err}")
+
+            # Stop rotation
             batch_rotation_active = False
             try:
                 batch_rotation_task.cancel()
             except:
                 pass
-            
-            # Final update with inline keyboard buttons retained
+
+            # Final completed message
             final_stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
-            
-            # Create final keyboard with completion status
             final_keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(f"📊 Total: {final_stats['total']}", callback_data="stats_total"),
-                    InlineKeyboardButton(f"✅ Valid: {final_stats['valid']}", callback_data="stats_valid")
-                ],
-                [
-                    InlineKeyboardButton(f"🔍 Checked: {final_stats['checked']}", callback_data="stats_checked"),
-                    InlineKeyboardButton(f"❌ Declined: {final_stats['declined']}", callback_data="stats_declined")
-                ],
-                [
-                    InlineKeyboardButton("✅ COMPLETED ✅", callback_data="completed")
-                ]
+                [InlineKeyboardButton(f"📊 Total: {final_stats['total']}", callback_data="stats_total"),
+                 InlineKeyboardButton(f"✅ Valid: {final_stats['valid']}", callback_data="stats_valid")],
+                [InlineKeyboardButton(f"🔍 Checked: {final_stats['checked']}", callback_data="stats_checked"),
+                 InlineKeyboardButton(f"❌ Declined: {final_stats['declined']}", callback_data="stats_declined")],
+                [InlineKeyboardButton("✅ COMPLETED ✅", callback_data="completed")]
             ])
-            
             await processing_msg.edit_text(
-                f"💳 Batch Processing Complete! 🎉\n"
-                f"📈 Results Summary Below 📈",
+                "💳 Batch Processing Complete! 🎉\n📈 Results Summary Below 📈",
                 reply_markup=final_keyboard,
                 parse_mode="HTML"
             )
 
-            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message = (
-                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
-                "<b>ׂPro CC Checker 3.0</b>\n"
-                ": ̗̀➛ Let's start Checking 💥\n"
-                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
-                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
-                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
-            )
-            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
-
         except Exception as e:
-            # Stop batch message rotation on error
             batch_rotation_active = False
             try:
                 batch_rotation_task.cancel()
             except:
                 pass
-            
-            logger.error(f"Multiple CC check error: {str(e)}")
+            logger.error(f"Multiple CC check error: {e}")
             await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
         finally:
-            # Clean up
             active_checks.discard(user_id)
             with stats_lock:
                 if user_id in check_stats:
                     del check_stats[user_id]
 
     except Exception as e:
-        logger.error(f"Working on some Fault: {str(e)}")
+        logger.error(f"Working on some Fault: {e}")
         await update.message.reply_text("An error occurred. Please try again.", parse_mode="HTML")
         active_checks.discard(user_id)
         with stats_lock:
             if user_id in check_stats:
                 del check_stats[user_id]
+
 
 
 # Admin command to deduct credits
