@@ -1005,7 +1005,7 @@ async def handle_pp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not db_user:
             await update.message.reply_text(
-                "⚠️ Please register first using /start",
+                "Register First You MF /start 🤬",
                 parse_mode="HTML"
             )
             return
@@ -1268,7 +1268,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not db_user:
             await update.message.reply_text(
-                "⚠️ Please register first using /start",
+                "Register First You MF /start 🤬",
                 parse_mode="HTML"
             )
             return
@@ -1457,17 +1457,41 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
             # This keeps per-user checks bounded but faster than strict 1-by-1.
             loop = asyncio.get_event_loop()
-            BATCH_SIZE = 5  # tune this per-user parallelism (4 is a good balance)
-            total_cards = len(valid_cards)
-            for i in range(0, total_cards, BATCH_SIZE):
-                batch = valid_cards[i:i + BATCH_SIZE]
-                # Submit the batch to the shared executor
-                tasks = [loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info) for card in batch]
 
-                # Process results as they complete within the batch
-                for fut in asyncio.as_completed(tasks):
-                    try:
-                        result, is_valid = await fut
+            # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
+            loop = asyncio.get_event_loop()
+            BATCH_SIZE = 6  # per-user parallelism; tune this (2-10). Set to 6 for faster throughput.
+            total_cards = len(valid_cards)
+
+            # Validate /mpp card count limits (2-10), and redirect single card to /pp suggestion
+            if total_cards == 1:
+                try:
+                    await update.message.reply_text("⚠️ Single card detected. Try /pp for single checking 💳", parse_mode="HTML")
+                except Exception:
+                    pass
+                return
+            if total_cards < 2 or total_cards > 10:
+                try:
+                    await update.message.reply_text("⚠️ Please provide between 2 and 10 cards for /mpp.", parse_mode="HTML")
+                except Exception:
+                    pass
+                return
+
+            try:
+                for i in range(0, total_cards, BATCH_SIZE):
+                    batch = valid_cards[i:i + BATCH_SIZE]
+                    # Submit the batch to the shared executor
+                    tasks = [loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info) for card in batch]
+
+                    # Process results as they complete within the batch
+                    for coro in asyncio.as_completed(tasks):
+                        try:
+                            result, is_valid = await coro
+                        except Exception as card_exc:
+                            # Individual card error — log and treat as declined
+                            logger.error(f"Card processing error for user {user_id}: {card_exc}")
+                            result = f"❌ Error checking card: {card_exc}"
+                            is_valid = False
 
                         # Update stats safely
                         with stats_lock:
@@ -1488,16 +1512,12 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         # Send every result to results channel (best-effort)
                         try:
                             await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
-                        except Exception as e:
-                            logger.warning(f"Failed to send to results channel: {str(e)}")
+                        except Exception as send_err:
+                            logger.warning(f"Failed to send to results channel: {str(send_err)}")
 
-                    except Exception as e:
-                        logger.error(f"Error processing card for user {user_id}: {str(e)}")
-                        with stats_lock:
-                            if user_id in check_stats:
-                                check_stats[user_id]['checked'] += 1
-                                check_stats[user_id]['declined'] += 1
-                        continue
+            except Exception as outer_exc:
+                # Log unexpected outer errors but do not crash the whole handler; continue to finalization.
+                logger.error(f"Unhandled exception during batch processing for user {user_id}: {outer_exc}")
 # Stop batch message rotation on error
             batch_rotation_active = False
             try:
@@ -1505,7 +1525,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.error(f"Multiple CC check error: {str(e)}")
+            logger.error("Multiple CC check error")
             await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
         finally:
             # Clean up
