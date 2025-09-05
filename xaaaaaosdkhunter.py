@@ -1447,53 +1447,18 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'credits': (db_user[3] - len(valid_cards)) if user_id != ADMIN_ID else float('inf')
             }
 
-                        # Use global executor and process cards sequentially but non-blocking
+            # Use ThreadPoolExecutor for concurrent checking
             loop = asyncio.get_event_loop()
-
-            # Process cards one-by-one using the shared GLOBAL_EXECUTOR.
-            # Each check runs in the threadpool; awaiting lets the event loop
-            # handle other users / buttons between checks.
             
-            # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
-            # This keeps per-user checks bounded but faster than strict 1-by-1.
-            loop = asyncio.get_event_loop()
-
-            # Process cards in small concurrent batches using the shared GLOBAL_EXECUTOR.
-            loop = asyncio.get_event_loop()
-            BATCH_SIZE = 6  # per-user parallelism; tune this (2-10). Set to 6 for faster throughput.
-            total_cards = len(valid_cards)
-
-            # Validate /mpp card count limits (2-10), and redirect single card to /pp suggestion
-            if total_cards == 1:
-                try:
-                    await update.message.reply_text("⚠️ Single card detected. Try /pp for single checking 💳", parse_mode="HTML")
-                except Exception:
-                    pass
-                return
-            if total_cards < 2 or total_cards > 10:
-                try:
-                    await update.message.reply_text("⚠️ Please provide between 2 and 10 cards for /mpp.", parse_mode="HTML")
-                except Exception:
-                    pass
-                return
-
-            try:
-                for i in range(0, total_cards, BATCH_SIZE):
-                    batch = valid_cards[i:i + BATCH_SIZE]
-                    # Submit the batch to the shared executor
-                    tasks = [loop.run_in_executor(GLOBAL_EXECUTOR, check_single_card_threaded, card, user_info) for card in batch]
-
-                    # Process results as they complete within the batch
-                    for coro in asyncio.as_completed(tasks):
-                        try:
-                            result, is_valid = await coro
-                        except Exception as card_exc:
-                            # Individual card error — log and treat as declined
-                            logger.error(f"Card processing error for user {user_id}: {card_exc}")
-                            result = f"❌ Error checking card: {card_exc}"
-                            is_valid = False
-
-                        # Update stats safely
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                # Submit all tasks
+                future_to_card = {executor.submit(check_single_card_threaded, card, user_info): card for card in valid_cards}
+                
+                for future in concurrent.futures.as_completed(future_to_card):
+                    try:
+                        result, is_valid = future.result()
+                        
+                        # Update stats
                         with stats_lock:
                             if user_id in check_stats:
                                 check_stats[user_id]['checked'] += 1
@@ -1501,31 +1466,81 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     check_stats[user_id]['valid'] += 1
                                 else:
                                     check_stats[user_id]['declined'] += 1
-
-                        # Send valid instantly to user
+                        
+                        # Update processing message with current stats (but don't interrupt rotation)
+                        stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
+                        # Let the rotation continue, don't force update here to avoid conflicts
+                        
+                        # Send valid cards instantly to user
                         if is_valid:
-                            try:
-                                await update.message.reply_text(result, parse_mode="HTML")
-                            except Exception:
-                                pass
-
-                        # Send every result to results channel (best-effort)
+                            await update.message.reply_text(result, parse_mode="HTML")
+                        
+                        # Send all results to results channel
                         try:
                             await context.bot.send_message(chat_id=RESULTS_CHANNEL, text=result, parse_mode="HTML")
-                        except Exception as send_err:
-                            logger.warning(f"Failed to send to results channel: {str(send_err)}")
+                        except Exception as e:
+                            logger.warning(f"Failed to send to results channel: {str(e)}")
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing card: {str(e)}")
+                        with stats_lock:
+                            if user_id in check_stats:
+                                check_stats[user_id]['checked'] += 1
+                                check_stats[user_id]['declined'] += 1
 
-            except Exception as outer_exc:
-                # Log unexpected outer errors but do not crash the whole handler; continue to finalization.
-                logger.error(f"Unhandled exception during batch processing for user {user_id}: {outer_exc}")
-# Stop batch message rotation on error
+            # Stop batch message rotation
             batch_rotation_active = False
             try:
                 batch_rotation_task.cancel()
             except:
                 pass
             
-            logger.error("Multiple CC check error")
+            # Final update with inline keyboard buttons retained
+            final_stats = check_stats.get(user_id, {'total': 0, 'checked': 0, 'valid': 0, 'declined': 0})
+            
+            # Create final keyboard with completion status
+            final_keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(f"📊 Total: {final_stats['total']}", callback_data="stats_total"),
+                    InlineKeyboardButton(f"✅ Valid: {final_stats['valid']}", callback_data="stats_valid")
+                ],
+                [
+                    InlineKeyboardButton(f"🔍 Checked: {final_stats['checked']}", callback_data="stats_checked"),
+                    InlineKeyboardButton(f"❌ Declined: {final_stats['declined']}", callback_data="stats_declined")
+                ],
+                [
+                    InlineKeyboardButton("✅ COMPLETED ✅", callback_data="completed")
+                ]
+            ])
+            
+            await processing_msg.edit_text(
+                f"💳 Batch Processing Complete! 🎉\n"
+                f"📈 Results Summary Below 📈",
+                reply_markup=final_keyboard,
+                parse_mode="HTML"
+            )
+
+            keyboard = [[InlineKeyboardButton("Back", callback_data="back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            message = (
+                "<b>ׂ╰┈➤ Welcome to ⬋</b>\n"
+                "<b>ׂPro CC Checker 3.0</b>\n"
+                ": ̗̀➛ Let's start Checking 💥\n"
+                "✎ Use /pp &lt;cc|mm|yy|cvv&gt; to check Single Card\n"
+                "✎ Use /mpp &lt;cards&gt; to check Multiple Cards\n"
+                "╰┈➤ ex: /pp 4532123456789012|12|25|123"
+            )
+            await update.message.reply_text(message, reply_markup=reply_markup, parse_mode="HTML")
+
+        except Exception as e:
+            # Stop batch message rotation on error
+            batch_rotation_active = False
+            try:
+                batch_rotation_task.cancel()
+            except:
+                pass
+            
+            logger.error(f"Multiple CC check error: {str(e)}")
             await processing_msg.edit_text("Error: Failed to process the cards. Please try again.", parse_mode="HTML")
         finally:
             # Clean up
@@ -1541,6 +1556,7 @@ async def handle_mpp_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with stats_lock:
             if user_id in check_stats:
                 del check_stats[user_id]
+
 
 # Admin command to deduct credits
 async def deduct_user_credit(update: Update, context: ContextTypes.DEFAULT_TYPE):
